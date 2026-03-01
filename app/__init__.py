@@ -15,9 +15,11 @@ def create_app():
 
     # ── Config ───────────────────────────────────────────────────────────────
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
-        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/zmc_forms"
-    )
+    db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/zmc_forms")
+    # Render gives postgres:// but SQLAlchemy needs postgresql://
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", 50)) * 1024 * 1024
     app.config["UPLOAD_FOLDER"] = os.path.join(os.path.dirname(__file__), "uploads")
