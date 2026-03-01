@@ -1,0 +1,195 @@
+{% extends "base/layout.html" %}
+{% block title %}Upload Forms{% endblock %}
+{% block breadcrumb %}Upload Forms{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h4 style="font-weight:700;">Upload Production Forms</h4>
+  <p class="text-muted mb-0" style="font-size:.875rem;">Upload batch images of hand-filled forms. The system will auto-identify and extract data from each.</p>
+</div>
+
+<div class="row g-4">
+  <!-- Upload Zone -->
+  <div class="col-lg-7">
+    <div class="bg-white rounded-3 border p-4" style="border-color:#E2E8F0 !important;">
+      <h6 class="fw-600 mb-3" style="font-weight:600;"><i class="bi bi-cloud-upload me-2 text-primary"></i>Select Form Images</h6>
+
+      <div class="upload-zone p-5 text-center rounded-3 mb-3"
+           id="drop-zone"
+           onclick="document.getElementById('file-input').click()">
+        <i class="bi bi-image fs-1 text-muted d-block mb-3"></i>
+        <h6 class="fw-500">Drag & Drop Images Here</h6>
+        <p class="text-muted mb-2" style="font-size:.85rem;">or click to browse files</p>
+        <span class="badge bg-light text-muted">JPG, PNG, WEBP supported · Max 50 MB per batch</span>
+        <input type="file" id="file-input" multiple accept="image/*" class="d-none">
+      </div>
+
+      <!-- File List -->
+      <div id="file-list" class="mb-3" style="display:none;">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <small class="fw-600 text-muted">SELECTED FILES</small>
+          <button class="btn btn-sm btn-link text-danger p-0" onclick="clearFiles()">
+            <i class="bi bi-trash me-1"></i>Clear All
+          </button>
+        </div>
+        <div id="file-items"></div>
+      </div>
+
+      <button id="upload-btn" class="btn w-100 py-2 disabled"
+              style="background:var(--zmc-blue);color:#fff;font-weight:600;"
+              onclick="startUpload()">
+        <i class="bi bi-lightning-charge me-2"></i>Extract Data from Forms
+      </button>
+    </div>
+  </div>
+
+  <!-- Info Panel -->
+  <div class="col-lg-5">
+    <div class="bg-white rounded-3 border p-4 mb-3" style="border-color:#E2E8F0 !important;">
+      <h6 class="fw-600 mb-3" style="font-weight:600;"><i class="bi bi-info-circle me-2 text-primary"></i>Supported Form Types</h6>
+      <div class="d-flex align-items-start gap-3 mb-3 pb-3 border-bottom">
+        <div class="stat-icon" style="background:#EBF4FF;width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="bi bi-printer" style="color:#2E75B6;"></i>
+        </div>
+        <div>
+          <div class="fw-600" style="font-size:.85rem;font-weight:600;">Flexo Printing Production Report</div>
+          <div class="text-muted" style="font-size:.78rem;">Form Code: F-PRD/01.2</div>
+        </div>
+      </div>
+      <div class="d-flex align-items-start gap-3">
+        <div class="stat-icon" style="background:#F0FDF4;width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="bi bi-printer-fill" style="color:#059669;"></i>
+        </div>
+        <div>
+          <div class="fw-600" style="font-size:.85rem;font-weight:600;">Gravure Printing Production Report</div>
+          <div class="text-muted" style="font-size:.78rem;">Form Code: F-PRD/01.1</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-3 border p-4" style="border-color:#E2E8F0 !important;">
+      <h6 class="fw-600 mb-3" style="font-weight:600;"><i class="bi bi-list-ol me-2 text-primary"></i>Process Steps</h6>
+      {% for step in [
+        ('1', 'Upload', 'Select and upload batch of form images'),
+        ('2', 'AI Extraction', 'System auto-identifies form type and extracts all fields'),
+        ('3', 'Verify', 'Review and correct extracted data'),
+        ('4', 'Save', 'Confirm and store data in database + Excel'),
+      ] %}
+      <div class="d-flex align-items-start gap-3 {% if not loop.last %}mb-3{% endif %}">
+        <div class="rounded-circle d-flex align-items-center justify-content-center fw-700"
+             style="width:28px;height:28px;background:var(--zmc-blue);color:#fff;font-size:.75rem;flex-shrink:0;">
+          {{ step[0] }}
+        </div>
+        <div>
+          <div class="fw-600" style="font-size:.83rem;font-weight:600;">{{ step[1] }}</div>
+          <div class="text-muted" style="font-size:.78rem;">{{ step[2] }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Progress / Results -->
+<div id="progress-section" class="mt-4" style="display:none;">
+  <div class="bg-white rounded-3 border p-4" style="border-color:#E2E8F0 !important;">
+    <h6 class="fw-600 mb-3" style="font-weight:600;"><i class="bi bi-cpu me-2 text-primary"></i>Extraction Progress</h6>
+    <div class="progress mb-3" style="height:8px;border-radius:4px;">
+      <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+           style="background:var(--zmc-blue);width:0%"></div>
+    </div>
+    <div id="progress-log" style="font-size:.82rem;color:#64748B;max-height:180px;overflow-y:auto;"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedFiles = [];
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const uploadBtn = document.getElementById('upload-btn');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  addFiles([...e.dataTransfer.files]);
+});
+fileInput.addEventListener('change', () => addFiles([...fileInput.files]));
+
+function addFiles(files) {
+  files.forEach(f => {
+    if (f.type.startsWith('image/') && !selectedFiles.find(x => x.name === f.name))
+      selectedFiles.push(f);
+  });
+  renderFileList();
+}
+
+function renderFileList() {
+  const list = document.getElementById('file-list');
+  const items = document.getElementById('file-items');
+  if (!selectedFiles.length) { list.style.display = 'none'; uploadBtn.classList.add('disabled'); return; }
+
+  list.style.display = 'block';
+  uploadBtn.classList.remove('disabled');
+  items.innerHTML = selectedFiles.map((f, i) => `
+    <div class="d-flex align-items-center gap-2 mb-2 p-2 rounded" style="background:#F8FAFC;">
+      <i class="bi bi-image text-primary"></i>
+      <span style="font-size:.83rem;flex:1;">${f.name}</span>
+      <span class="text-muted" style="font-size:.75rem;">${(f.size/1024).toFixed(0)} KB</span>
+      <button class="btn btn-sm p-0 text-danger" onclick="removeFile(${i})"><i class="bi bi-x"></i></button>
+    </div>
+  `).join('');
+}
+
+function removeFile(idx) { selectedFiles.splice(idx, 1); renderFileList(); }
+function clearFiles() { selectedFiles = []; fileInput.value = ''; renderFileList(); }
+
+async function startUpload() {
+  if (!selectedFiles.length) return;
+
+  const section = document.getElementById('progress-section');
+  const bar = document.getElementById('progress-bar');
+  const log = document.getElementById('progress-log');
+  section.style.display = 'block';
+  uploadBtn.disabled = true;
+
+  log.innerHTML = `<div class="mb-1">Uploading ${selectedFiles.length} file(s)…</div>`;
+  bar.style.width = '20%';
+
+  const fd = new FormData();
+  selectedFiles.forEach(f => fd.append('files', f));
+
+  try {
+    const res = await fetch('/upload/process', { method: 'POST', body: fd });
+    bar.style.width = '70%';
+
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+
+    bar.style.width = '100%';
+    bar.classList.remove('progress-bar-animated');
+    bar.style.background = '#059669';
+
+    log.innerHTML += `<div class="text-success mb-1">Extracted ${data.results.length} form(s)</div>`;
+    data.results.forEach(r => {
+      const icon = r.error ? 'Error' : 'OK';
+      const info = r.error ? r.error : `${r.form_code || 'Unknown'} (${Math.round((r.confidence||0)*100)}% confidence)`;
+      log.innerHTML += `<div class="mb-1">${icon} <strong>${r.filename}</strong>: ${info}</div>`;
+    });
+
+    setTimeout(() => {
+      window.location.href = `/verify/${data.submission_id}`;
+    }, 1800);
+
+  } catch(err) {
+    bar.style.background = '#DC2626';
+    bar.classList.remove('progress-bar-animated');
+    log.innerHTML += `<div class="text-danger">Error: ${err.message}</div>`;
+    uploadBtn.disabled = false;
+  }
+}
+</script>
+{% endblock %}

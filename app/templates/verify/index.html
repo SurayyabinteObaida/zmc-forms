@@ -1,0 +1,376 @@
+{% extends "base/layout.html" %}
+{% block title %}Verify Extraction{% endblock %}
+{% block breadcrumb %}Upload Forms / Verify Extraction{% endblock %}
+
+{% block head %}
+<style>
+.record-tab { cursor:pointer; border:2px solid #E2E8F0; border-radius:10px; padding:.75rem 1rem;
+              transition:all .15s; background:#fff; margin-bottom:.5rem; }
+.record-tab:hover { border-color:var(--zmc-blue-light); }
+.record-tab.active { border-color:var(--zmc-blue); background:#EBF4FF; }
+.record-tab .form-badge { font-size:.7rem; }
+.field-group-label { font-size:.7rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+                     color:#94A3B8; margin:1rem 0 .5rem; border-top:1px solid #F1F5F9; padding-top:1rem; }
+.field-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:.5rem; }
+@media(max-width:768px) { .field-row { grid-template-columns:1fr; } }
+.verify-input { border:1px solid #E2E8F0; border-radius:6px; padding:.35rem .65rem; font-size:.84rem;
+                width:100%; transition:border-color .15s; }
+.verify-input:focus { outline:none; border-color:var(--zmc-blue-light); box-shadow:0 0 0 3px rgba(46,117,182,.1); }
+.verify-input.modified { border-color:var(--zmc-accent); background:#FFFBEB; }
+.json-view { background:#0F172A; color:#94A3B8; border-radius:10px; font-family:monospace;
+             font-size:.8rem; padding:1.25rem; max-height:500px; overflow-y:auto; }
+.save-all-bar { position:sticky; bottom:0; background:#fff; border-top:2px solid #E2E8F0; padding:1rem 1.5rem;
+                margin:-1.75rem; margin-top:1.5rem; z-index:100; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 style="font-weight:700;">Verify Extracted Data</h4>
+    <p class="text-muted mb-0" style="font-size:.875rem;">
+      Batch: <code>{{ submission.batch_id[:20] }}…</code> ·
+      {{ enriched | length }} form(s) extracted ·
+      Uploaded {{ submission.uploaded_at.strftime('%Y-%m-%d %H:%M') }}
+    </p>
+  </div>
+  <a href="{{ url_for('upload.index') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>New Upload
+  </a>
+</div>
+
+{% if enriched %}
+<div class="row g-3">
+  <!-- Left: Record list -->
+  <div class="col-lg-3">
+    <div class="bg-white rounded-3 border p-3 sticky-top" style="border-color:#E2E8F0 !important;top:1rem;">
+      <small class="text-muted fw-600 d-block mb-2">FORMS IN BATCH</small>
+      {% for item in enriched %}
+      <div class="record-tab {% if loop.first %}active{% endif %}"
+           id="tab-{{ item.record.id }}"
+           onclick="switchRecord({{ item.record.id }})">
+        <div class="d-flex align-items-start justify-content-between gap-1">
+          <div style="min-width:0;">
+            <div class="fw-600 text-truncate" style="font-size:.83rem;font-weight:600;">
+              {{ item.record.filename or 'Form ' + loop.index|string }}
+            </div>
+            {% if item.form_type %}
+            <span class="badge form-badge mt-1" style="background:var(--zmc-blue);color:#fff;">
+              {{ item.form_type.code }}
+            </span>
+            {% else %}
+            <span class="badge badge-error form-badge mt-1">Unidentified</span>
+            {% endif %}
+          </div>
+          {% if item.record.status == 'saved' %}
+          <i class="bi bi-check-circle-fill text-success mt-1 flex-shrink-0"></i>
+          {% elif item.record.error_message %}
+          <i class="bi bi-exclamation-circle-fill text-danger mt-1 flex-shrink-0"></i>
+          {% else %}
+          <i class="bi bi-circle text-muted mt-1 flex-shrink-0"></i>
+          {% endif %}
+        </div>
+        {% if item.record.confidence %}
+        <div class="mt-2">
+          <div class="confidence-bar">
+            <div class="confidence-fill" style="width:{{ (item.record.confidence * 100)|round|int }}%"></div>
+          </div>
+          <small class="text-muted" style="font-size:.7rem;">
+            {{ (item.record.confidence * 100)|round|int }}% confidence
+          </small>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Right: Verification panel -->
+  <div class="col-lg-9">
+    {% for item in enriched %}
+    <div id="panel-{{ item.record.id }}" class="record-panel" style="{% if not loop.first %}display:none;{% endif %}">
+      <div class="bg-white rounded-3 border" style="border-color:#E2E8F0 !important;">
+
+        <!-- Panel Header -->
+        <div class="p-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div>
+            <h6 class="mb-0 fw-600" style="font-weight:600;">
+              {{ item.form_type.name if item.form_type else 'Unknown Form Type' }}
+            </h6>
+            <small class="text-muted">{{ item.record.filename }}</small>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            {% if item.record.error_message %}
+            <span class="badge badge-error">{{ item.record.error_message[:60] }}</span>
+            {% endif %}
+
+            <!-- Form type override -->
+            <select class="form-select form-select-sm" style="width:auto;font-size:.8rem;"
+                    onchange="overrideFormType({{ item.record.id }}, this.value)">
+              <option value="">— Override Form Type —</option>
+              {% for ft in form_types %}
+              <option value="{{ ft.id }}" {% if item.form_type and item.form_type.id == ft.id %}selected{% endif %}>
+                {{ ft.code }} – {{ ft.name }}
+              </option>
+              {% endfor %}
+            </select>
+
+            <!-- View toggle -->
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-secondary active" onclick="setView({{ item.record.id }}, 'form', this)">
+                <i class="bi bi-pencil-square"></i>
+              </button>
+              <button class="btn btn-outline-secondary" onclick="setView({{ item.record.id }}, 'json', this)">
+                <i class="bi bi-braces"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Form View -->
+        <div id="form-view-{{ item.record.id }}" class="p-4">
+          {% if item.enabled_fields %}
+          <form id="verify-form-{{ item.record.id }}">
+            <div class="row g-3">
+              {% for field in item.enabled_fields %}
+              <div class="col-md-6">
+                <label class="field-label mb-1 d-block" style="font-size:.78rem;font-weight:600;color:#374151;">
+                  {{ field.label }}
+                  <span class="text-muted fw-400" style="font-weight:400;">({{ field.field_type }})</span>
+                </label>
+                <input
+                  class="verify-input"
+                  type="{{ 'number' if field.field_type == 'number' else 'text' }}"
+                  name="{{ field.key }}"
+                  value="{{ item.raw_data.get(field.key, '') or '' }}"
+                  placeholder="{{ field.label }}"
+                  data-original="{{ item.raw_data.get(field.key, '') or '' }}"
+                  oninput="onFieldChange(this)"
+                  step="any"
+                />
+              </div>
+              {% endfor %}
+            </div>
+          </form>
+          {% else %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
+            No fields configured or form type could not be identified.<br>
+            <small>Use the form type override above to assign this form manually.</small>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- JSON View -->
+        <div id="json-view-{{ item.record.id }}" class="p-4" style="display:none;">
+          <div class="json-view" id="json-display-{{ item.record.id }}">
+            {{ item.raw_data | tojson(indent=2) }}
+          </div>
+        </div>
+
+        <!-- Panel Footer -->
+        <div class="p-3 border-top d-flex align-items-center justify-content-between">
+          <button class="btn btn-sm btn-outline-secondary" onclick="resetForm({{ item.record.id }})">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Changes
+          </button>
+          <button class="btn btn-sm px-4" style="background:var(--zmc-blue);color:#fff;"
+                  onclick="saveRecord({{ item.record.id }})"
+                  id="save-btn-{{ item.record.id }}"
+                  {% if item.record.status == 'saved' %}disabled{% endif %}>
+            {% if item.record.status == 'saved' %}
+            <i class="bi bi-check2 me-1"></i>Already Saved
+            {% else %}
+            <i class="bi bi-floppy me-1"></i>Save This Record
+            {% endif %}
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- Save All Bar -->
+    <div class="save-all-bar d-flex align-items-center justify-content-between">
+      <div>
+        <span id="saved-count" class="fw-600" style="font-weight:600;">0</span>
+        <span class="text-muted"> of {{ enriched | length }} records saved</span>
+      </div>
+      <button class="btn px-4 py-2" style="background:var(--zmc-success, #198754);color:#fff;font-weight:600;"
+              onclick="saveAll()">
+        <i class="bi bi-check2-all me-2"></i>Save All & Finish
+      </button>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+  <h6>No records found in this submission.</h6>
+  <a href="{{ url_for('upload.index') }}" class="btn btn-primary mt-2">Upload Again</a>
+</div>
+{% endif %}
+
+<!-- Pass data to JS -->
+<script>
+const SUBMISSION_ID = {{ submission.id }};
+const FORM_TYPES_AVAILABLE = {{ form_types | map(attribute='id') | list | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// State tracking
+const savedState = {};
+const modifiedState = {};
+let savedCount = 0;
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchRecord(id) {
+  document.querySelectorAll('.record-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.record-panel').forEach(p => p.style.display = 'none');
+  document.getElementById('tab-' + id).classList.add('active');
+  document.getElementById('panel-' + id).style.display = 'block';
+}
+
+// ── View toggle (form vs JSON) ────────────────────────────────────────────────
+function setView(id, view, btn) {
+  const fv = document.getElementById('form-view-' + id);
+  const jv = document.getElementById('json-view-' + id);
+  btn.closest('.btn-group').querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  if (view === 'json') {
+    fv.style.display = 'none'; jv.style.display = 'block';
+    const data = collectFormData(id);
+    document.getElementById('json-display-' + id).textContent = JSON.stringify(data, null, 2);
+  } else {
+    fv.style.display = 'block'; jv.style.display = 'none';
+  }
+}
+
+// ── Field change highlighting ─────────────────────────────────────────────────
+function onFieldChange(input) {
+  input.classList.toggle('modified', input.value !== input.dataset.original);
+}
+
+function resetForm(id) {
+  const form = document.getElementById('verify-form-' + id);
+  if (!form) return;
+  form.querySelectorAll('.verify-input').forEach(inp => {
+    inp.value = inp.dataset.original;
+    inp.classList.remove('modified');
+  });
+}
+
+// ── Data collection ───────────────────────────────────────────────────────────
+function collectFormData(id) {
+  const form = document.getElementById('verify-form-' + id);
+  if (!form) return {};
+  const data = {};
+  form.querySelectorAll('.verify-input').forEach(inp => {
+    data[inp.name] = inp.value === '' ? null : inp.value;
+  });
+  return data;
+}
+
+// ── Save single record ────────────────────────────────────────────────────────
+async function saveRecord(id) {
+  const btn = document.getElementById('save-btn-' + id);
+  const data = collectFormData(id);
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+
+  try {
+    const res = await fetch(`/verify/save/${id}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({data})
+    });
+    const json = await res.json();
+    if (json.success) {
+      btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Saved';
+      btn.style.background = '#059669';
+
+      // Update tab icon
+      const tab = document.getElementById('tab-' + id);
+      const icon = tab.querySelector('.bi-circle, .bi-exclamation-circle-fill');
+      if (icon) { icon.className = 'bi bi-check-circle-fill text-success mt-1 flex-shrink-0'; }
+
+      savedCount++;
+      document.getElementById('saved-count').textContent = savedCount;
+    } else {
+      throw new Error(json.error || 'Save failed');
+    }
+  } catch(err) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Retry';
+    btn.style.background = '#DC2626';
+    alert('Error saving record: ' + err.message);
+  }
+}
+
+// ── Save all records ──────────────────────────────────────────────────────────
+async function saveAll() {
+  const panels = document.querySelectorAll('.record-panel');
+  const allData = {};
+
+  panels.forEach(panel => {
+    const id = panel.id.replace('panel-', '');
+    const saveBtn = document.getElementById('save-btn-' + id);
+    // Skip already saved
+    if (saveBtn && saveBtn.disabled && saveBtn.textContent.includes('Saved')) return;
+    allData[id] = collectFormData(parseInt(id));
+  });
+
+  if (!Object.keys(allData).length) {
+    alert('All records are already saved!');
+    return;
+  }
+
+  const confirmed = confirm(`Save ${Object.keys(allData).length} record(s) to database?`);
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/verify/save-batch/${SUBMISSION_ID}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({records: allData})
+    });
+    const json = await res.json();
+    if (json.success) {
+      json.saved.forEach(id => {
+        const btn = document.getElementById('save-btn-' + id);
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Saved'; btn.style.background='#059669'; }
+        const tab = document.getElementById('tab-' + id);
+        if (tab) { const icon = tab.querySelector('.bi'); if(icon) icon.className='bi bi-check-circle-fill text-success mt-1 flex-shrink-0'; }
+      });
+      document.getElementById('saved-count').textContent = json.saved.length;
+      alert(`${json.saved.length} record(s) saved successfully!${json.errors.length ? '\nErrors: ' + json.errors.join(', ') : ''}`);
+    }
+  } catch(err) {
+    alert('Batch save failed: ' + err.message);
+  }
+}
+
+// ── Form type override ────────────────────────────────────────────────────────
+async function overrideFormType(recordId, formTypeId) {
+  if (!formTypeId) return;
+  await fetch(`/verify/update-form-type/${recordId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({form_type_id: parseInt(formTypeId)})
+  });
+  window.location.reload();
+}
+
+// ── Init saved count ──────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const tabs = document.querySelectorAll('.record-tab');
+  tabs.forEach(tab => {
+    if (tab.querySelector('.bi-check-circle-fill')) savedCount++;
+  });
+  document.getElementById('saved-count').textContent = savedCount;
+});
+</script>
+{% endblock %}
