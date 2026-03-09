@@ -44,7 +44,9 @@ Return ONLY a valid JSON object with these exact keys (use null for any field no
 Rules:
 - Extract exactly what is written, do not calculate or infer values
 - For numbers, return numeric values without units
-- For dates, use the format as written on the form
+- For dates: look carefully for a field labeled 'Date' or 'Print Date'. 
+  The date is typically handwritten in DD/MM/YYYY or DD-MM-YYYY format.
+  Return it exactly as written (e.g. "18/02/2026"). If only partially visible, return what is readable.
 - For illegible handwriting, use null
 - Do not add any explanation outside the JSON"""
 
