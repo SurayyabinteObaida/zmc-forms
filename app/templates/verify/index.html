@@ -21,6 +21,21 @@
              font-size:.8rem; padding:1.25rem; max-height:500px; overflow-y:auto; }
 .save-all-bar { position:sticky; bottom:0; background:#fff; border-top:2px solid #E2E8F0; padding:1rem 1.5rem;
                 margin:-1.75rem; margin-top:1.5rem; z-index:100; }
+
+/* Consensus table */
+.consensus-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.consensus-table th { background:#F8FAFC; color:#64748B; font-weight:600; font-size:.72rem;
+                      text-transform:uppercase; letter-spacing:.05em; padding:.5rem .75rem;
+                      border-bottom:2px solid #E2E8F0; white-space:nowrap; }
+.consensus-table td { padding:.45rem .75rem; border-bottom:1px solid #F1F5F9; vertical-align:middle; }
+.consensus-table tr:last-child td { border-bottom:none; }
+.consensus-table .field-name { font-weight:600; color:#374151; }
+.cell-agree { background:#F0FDF4; color:#166534; font-weight:600; }
+.cell-disagree { background:#FEF9C3; color:#854D0E; }
+.cell-null { color:#CBD5E1; font-style:italic; }
+.cell-consensus { background:#EBF4FF; color:#1E40AF; font-weight:700; border-left:3px solid var(--zmc-blue); }
+.consensus-legend { display:flex; gap:1rem; font-size:.75rem; margin-bottom:.75rem; flex-wrap:wrap; }
+.legend-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:4px; }
 </style>
 {% endblock %}
 
@@ -117,10 +132,13 @@
 
             <!-- View toggle -->
             <div class="btn-group btn-group-sm">
-              <button class="btn btn-outline-secondary active" onclick="setView({{ item.record.id }}, 'form', this)">
+              <button class="btn btn-outline-secondary active" onclick="setView({{ item.record.id }}, 'form', this)" title="Form view">
                 <i class="bi bi-pencil-square"></i>
               </button>
-              <button class="btn btn-outline-secondary" onclick="setView({{ item.record.id }}, 'json', this)">
+              <button class="btn btn-outline-secondary" onclick="setView({{ item.record.id }}, 'consensus', this)" title="Model consensus">
+                <i class="bi bi-diagram-3"></i>
+              </button>
+              <button class="btn btn-outline-secondary" onclick="setView({{ item.record.id }}, 'json', this)" title="JSON view">
                 <i class="bi bi-braces"></i>
               </button>
             </div>
@@ -157,6 +175,65 @@
             <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
             No fields configured or form type could not be identified.<br>
             <small>Use the form type override above to assign this form manually.</small>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Consensus View -->
+        <div id="consensus-view-{{ item.record.id }}" class="p-4" style="display:none;">
+          {% set mr = item.model_results %}
+          {% if mr %}
+            {% set model_names = mr.keys() | list %}
+            <div class="consensus-legend">
+              <span><span class="legend-dot" style="background:#BBF7D0;"></span>All models agree</span>
+              <span><span class="legend-dot" style="background:#FEF08A;"></span>Disagreement</span>
+              <span><span class="legend-dot" style="background:#BFDBFE;"></span>Consensus (majority vote)</span>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="consensus-table">
+                <thead>
+                  <tr>
+                    <th>Field</th>
+                    {% for m in model_names %}
+                    <th>{{ m }}</th>
+                    {% endfor %}
+                    <th>Consensus</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for field in item.enabled_fields %}
+                  {% set key = field.key %}
+                  {% set consensus_val = item.raw_data.get(key) %}
+                  {% set model_vals = [] %}
+                  {% for m in model_names %}
+                    {% if mr[m] %}
+                      {% set _ = model_vals.append(mr[m].get(key)) %}
+                    {% else %}
+                      {% set _ = model_vals.append(None) %}
+                    {% endif %}
+                  {% endfor %}
+                  {% set unique_vals = model_vals | unique | list %}
+                  {% set all_agree = unique_vals | length == 1 %}
+                  <tr>
+                    <td class="field-name">{{ field.label }}</td>
+                    {% for val in model_vals %}
+                    <td class="{{ 'cell-agree' if all_agree else 'cell-disagree' }}{% if val is none %} cell-null{% endif %}">
+                      {{ val if val is not none else '—' }}
+                    </td>
+                    {% endfor %}
+                    <td class="cell-consensus">
+                      {{ consensus_val if consensus_val is not none else '—' }}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-info-circle fs-3 d-block mb-2"></i>
+            No model consensus data available for this record.<br>
+            <small>This record may have been processed before multi-model extraction was enabled.</small>
           </div>
           {% endif %}
         </div>
@@ -232,19 +309,26 @@ function switchRecord(id) {
   document.getElementById('panel-' + id).style.display = 'block';
 }
 
-// ── View toggle (form vs JSON) ────────────────────────────────────────────────
+// ── View toggle (form / consensus / JSON) ─────────────────────────────────────
 function setView(id, view, btn) {
   const fv = document.getElementById('form-view-' + id);
+  const cv = document.getElementById('consensus-view-' + id);
   const jv = document.getElementById('json-view-' + id);
   btn.closest('.btn-group').querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 
-  if (view === 'json') {
-    fv.style.display = 'none'; jv.style.display = 'block';
+  fv.style.display = 'none';
+  cv.style.display = 'none';
+  jv.style.display = 'none';
+
+  if (view === 'form') {
+    fv.style.display = 'block';
+  } else if (view === 'consensus') {
+    cv.style.display = 'block';
+  } else {
+    jv.style.display = 'block';
     const data = collectFormData(id);
     document.getElementById('json-display-' + id).textContent = JSON.stringify(data, null, 2);
-  } else {
-    fv.style.display = 'block'; jv.style.display = 'none';
   }
 }
 
@@ -292,7 +376,6 @@ async function saveRecord(id) {
       btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Saved';
       btn.style.background = '#059669';
 
-      // Update tab icon
       const tab = document.getElementById('tab-' + id);
       const icon = tab.querySelector('.bi-circle, .bi-exclamation-circle-fill');
       if (icon) { icon.className = 'bi bi-check-circle-fill text-success mt-1 flex-shrink-0'; }
@@ -318,7 +401,6 @@ async function saveAll() {
   panels.forEach(panel => {
     const id = panel.id.replace('panel-', '');
     const saveBtn = document.getElementById('save-btn-' + id);
-    // Skip already saved
     if (saveBtn && saveBtn.disabled && saveBtn.textContent.includes('Saved')) return;
     allData[id] = collectFormData(parseInt(id));
   });

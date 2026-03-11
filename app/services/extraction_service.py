@@ -1,16 +1,21 @@
 """
 extraction_service.py
-Handles image-to-structured-data extraction via OpenAI Vision API (GPT-4o).
+Handles image-to-structured-data extraction via OpenAI Vision API.
+Uses 4 models in parallel with majority-vote consensus for accuracy.
 """
 import os
 import json
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter
 from openai import OpenAI
 from app.models import FormType
 
 
 def _get_client():
     return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+EXTRACTION_MODELS = ["gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-mini", "gpt-4-turbo"]
 
 FORM_IDENTIFICATION_PROMPT = """You are an expert at reading manufacturing production forms.
 Look at this image carefully. Identify which type of form it is.
@@ -72,6 +77,23 @@ def _parse_json_response(text: str) -> dict:
     return json.loads(text.strip())
 
 
+def _majority_vote(results: list[dict]) -> dict:
+    if not results:
+        return {}
+    all_keys = set(k for r in results for k in r.keys())
+    consensus = {}
+    for key in all_keys:
+        values = [r.get(key) for r in results]
+        str_values = [json.dumps(v, sort_keys=True) for v in values]
+        most_common_str, count = Counter(str_values).most_common(1)[0]
+        if count >= 2:
+            consensus[key] = json.loads(most_common_str)
+        else:
+            non_null = [v for v in values if v is not None]
+            consensus[key] = non_null[0] if non_null else None
+    return consensus
+
+
 def identify_form(image_path: str) -> dict:
     data, media_type = _encode_image(image_path)
     response = _get_client().chat.completions.create(
@@ -88,21 +110,46 @@ def identify_form(image_path: str) -> dict:
     return _parse_json_response(response.choices[0].message.content)
 
 
-def extract_fields(image_path: str, form_type: FormType) -> dict:
-    data, media_type = _encode_image(image_path)
-    prompt = _build_extraction_prompt(form_type)
+def _extract_with_model(model: str, image_data: str, media_type: str, prompt: str) -> dict:
     response = _get_client().chat.completions.create(
-        model="gpt-4o",
+        model=model,
         max_tokens=2048,
         messages=[{
             "role": "user",
             "content": [
-                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}", "detail": "high"}},
+                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_data}", "detail": "high"}},
                 {"type": "text", "text": prompt},
             ],
         }],
     )
     return _parse_json_response(response.choices[0].message.content)
+
+
+def extract_fields(image_path: str, form_type: FormType) -> dict:
+    """Returns {"consensus": {...}, "model_results": {"gpt-4o": {...}, ...}}"""
+    image_data, media_type = _encode_image(image_path)
+    prompt = _build_extraction_prompt(form_type)
+
+    model_results = {}
+    with ThreadPoolExecutor(max_workers=len(EXTRACTION_MODELS)) as executor:
+        futures = {
+            executor.submit(_extract_with_model, model, image_data, media_type, prompt): model
+            for model in EXTRACTION_MODELS
+        }
+        for future in as_completed(futures):
+            model = futures[future]
+            try:
+                model_results[model] = future.result()
+            except Exception as e:
+                print(f"[extraction_service] Model {model} failed: {e}")
+                model_results[model] = None
+
+    successful = [v for v in model_results.values() if v is not None]
+    if not successful:
+        raise RuntimeError("All models failed during extraction.")
+
+    consensus = _majority_vote(successful)
+    return {"consensus": consensus, "model_results": model_results}
 
 
 def process_image(image_path: str, form_types: list) -> dict:
@@ -115,15 +162,22 @@ def process_image(image_path: str, form_types: list) -> dict:
 
         if not matched_form:
             return {"form_code": form_code, "form_type_id": None, "data": {},
-                    "confidence": confidence, "error": f"Could not match form code '{form_code}'."}
+                    "model_results": {}, "confidence": confidence,
+                    "error": f"Could not match form code '{form_code}'."}
 
         extracted = extract_fields(image_path, matched_form)
-        return {"form_code": form_code, "form_type_id": matched_form.id,
-                "data": extracted, "confidence": confidence, "error": None}
+        return {
+            "form_code": form_code,
+            "form_type_id": matched_form.id,
+            "data": extracted["consensus"],
+            "model_results": extracted["model_results"],
+            "confidence": confidence,
+            "error": None,
+        }
 
     except json.JSONDecodeError as e:
-        return {"form_code": None, "form_type_id": None, "data": {}, "confidence": 0.0,
-                "error": f"JSON parse error: {str(e)}"}
+        return {"form_code": None, "form_type_id": None, "data": {}, "model_results": {},
+                "confidence": 0.0, "error": f"JSON parse error: {str(e)}"}
     except Exception as e:
-        return {"form_code": None, "form_type_id": None, "data": {}, "confidence": 0.0,
-                "error": str(e)}
+        return {"form_code": None, "form_type_id": None, "data": {}, "model_results": {},
+                "confidence": 0.0, "error": str(e)}

@@ -13,6 +13,15 @@ FORM_MODEL_MAP = {
 }
 
 
+def _parse_raw_extraction(raw: str) -> tuple[dict, dict]:
+    """Returns (consensus_data, model_results). Handles both old and new format."""
+    parsed = json.loads(raw or "{}")
+    if "consensus" in parsed:
+        return parsed["consensus"], parsed.get("model_results", {})
+    # Legacy format: raw_extraction was just the flat data dict
+    return parsed, {}
+
+
 @verify_bp.route("/<int:submission_id>")
 def index(submission_id):
     submission = Submission.query.get_or_404(submission_id)
@@ -21,12 +30,13 @@ def index(submission_id):
     enriched = []
     for rec in records:
         form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
-        raw_data = json.loads(rec.raw_extraction or "{}")
+        raw_data, model_results = _parse_raw_extraction(rec.raw_extraction)
         enabled_fields = form_type.enabled_fields() if form_type else []
         enriched.append({
             "record": rec,
             "form_type": form_type,
             "raw_data": raw_data,
+            "model_results": model_results,
             "enabled_fields": enabled_fields,
         })
 
@@ -38,7 +48,7 @@ def index(submission_id):
 def get_record(record_id):
     rec = ExtractedRecord.query.get_or_404(record_id)
     form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
-    data = json.loads(rec.raw_extraction or "{}")
+    data, model_results = _parse_raw_extraction(rec.raw_extraction)
     fields = [f.to_dict() for f in form_type.enabled_fields()] if form_type else []
 
     return jsonify({
@@ -51,6 +61,7 @@ def get_record(record_id):
         "error": rec.error_message,
         "fields": fields,
         "data": data,
+        "model_results": model_results,
         "image_path": rec.image_path,
     })
 
@@ -67,15 +78,12 @@ def save_record(record_id):
     payload = request.get_json()
     verified_data = payload.get("data", {})
 
-    # Persist verified data JSON
     rec.verified_data = json.dumps(verified_data)
     rec.status = "saved"
     rec.saved_at = datetime.now(timezone.utc)
 
-    # Save into typed model
     ModelClass = FORM_MODEL_MAP.get(form_type.code)
     if ModelClass:
-        # Delete existing if re-saving
         existing = ModelClass.query.filter_by(extracted_record_id=rec.id).first()
         if existing:
             db.session.delete(existing)
@@ -96,7 +104,7 @@ def save_batch(submission_id):
     """Save all verified records in a submission."""
     submission = Submission.query.get_or_404(submission_id)
     payload = request.get_json()
-    records_data = payload.get("records", {})  # {record_id: {field: value}}
+    records_data = payload.get("records", {})
 
     saved_ids = []
     errors = []

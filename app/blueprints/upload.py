@@ -53,12 +53,18 @@ def process():
         # Run AI extraction pipeline
         result = process_image(image_path, form_types)
 
+        # Store consensus + model_results together in raw_extraction
+        raw_extraction_payload = json.dumps({
+            "consensus": result["data"],
+            "model_results": result["model_results"],
+        })
+
         record = ExtractedRecord(
             submission_id=submission.id,
             form_type_id=result["form_type_id"],
             filename=filename,
             image_path=image_path,
-            raw_extraction=json.dumps(result["data"]),
+            raw_extraction=raw_extraction_payload,
             confidence=result["confidence"],
             status="extracted" if not result["error"] else "error",
             error_message=result["error"],
