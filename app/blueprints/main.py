@@ -1,4 +1,5 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, jsonify
+from app import db
 from app.models import FormType, ExtractedRecord, Submission, FlexoPrintingRecord, GravurePrintingRecord
 
 main_bp = Blueprint("main", __name__)
@@ -33,3 +34,22 @@ def dashboard():
         stats=stats,
         recent_submissions=recent_submissions,
     )
+
+
+@main_bp.route("/delete-submission/<int:submission_id>", methods=["DELETE"])
+def delete_submission(submission_id):
+    submission = Submission.query.get_or_404(submission_id)
+    records = ExtractedRecord.query.filter_by(submission_id=submission_id).all()
+
+    for rec in records:
+        form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
+        if form_type:
+            if form_type.code == "F-PRD/01.2":
+                FlexoPrintingRecord.query.filter_by(extracted_record_id=rec.id).delete()
+            elif form_type.code == "F-PRD/01.1":
+                GravurePrintingRecord.query.filter_by(extracted_record_id=rec.id).delete()
+        db.session.delete(rec)
+
+    db.session.delete(submission)
+    db.session.commit()
+    return jsonify({"success": True})

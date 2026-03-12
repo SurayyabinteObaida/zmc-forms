@@ -1,7 +1,7 @@
 """
 extraction_service.py
 Handles image-to-structured-data extraction via OpenAI Vision API.
-Uses 4 models in parallel with majority-vote consensus for accuracy.
+Uses 4 GPT models in parallel with majority-vote consensus for accuracy.
 """
 import os
 import json
