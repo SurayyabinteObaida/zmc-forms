@@ -1,0 +1,180 @@
+{% extends "base/layout.html" %}
+{% block title %}Field Configuration{% endblock %}
+{% block breadcrumb %}Settings / Field Configuration{% endblock %}
+
+{% block head %}
+<style>
+.form-type-card { cursor:pointer; border:2px solid #E2E8F0; border-radius:10px; padding:1rem;
+                  transition:all .15s; background:#fff; }
+.form-type-card:hover, .form-type-card.active { border-color:var(--zmc-blue); background:#EBF4FF; }
+.field-item { display:flex; align-items:center; gap:.75rem; padding:.6rem .75rem; border:1px solid #E2E8F0;
+              border-radius:8px; margin-bottom:.4rem; background:#fff; transition:all .15s; }
+.field-item:hover { border-color:var(--zmc-blue-light); }
+.field-item.disabled-field { opacity:.5; background:#F8FAFC; }
+.drag-handle { cursor:grab; color:#CBD5E1; }
+.drag-handle:active { cursor:grabbing; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h4 style="font-weight:700;">Field Configuration</h4>
+  <p class="text-muted mb-0" style="font-size:.875rem;">
+    Control which fields are extracted and stored for each form type. Disabled fields are ignored during extraction and export.
+  </p>
+</div>
+
+<div class="row g-3">
+  <!-- Form type selector -->
+  <div class="col-lg-3">
+    <div class="bg-white rounded-3 border p-3" style="border-color:#E2E8F0 !important;">
+      <small class="text-muted fw-600 d-block mb-2">SELECT FORM TYPE</small>
+      {% for ft in form_types %}
+      <div class="form-type-card mb-2 {% if loop.first %}active{% endif %}"
+           onclick="loadFormType({{ ft.id }}, this)">
+        <div class="badge mb-1" style="background:var(--zmc-blue);color:#fff;font-size:.7rem;">{{ ft.code }}</div>
+        <div class="fw-600" style="font-size:.85rem;font-weight:600;">{{ ft.name }}</div>
+        <div class="text-muted" style="font-size:.75rem;">
+          {{ ft.field_configs | selectattr('enabled') | list | length }} /
+          {{ ft.field_configs | length }} fields active
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Field list -->
+  <div class="col-lg-9">
+    <div class="bg-white rounded-3 border" style="border-color:#E2E8F0 !important;">
+      <div class="p-3 border-bottom d-flex align-items-center justify-content-between">
+        <div>
+          <h6 class="mb-0 fw-600" style="font-weight:600;" id="panel-title">Loading…</h6>
+          <small class="text-muted" id="panel-subtitle"></small>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary" onclick="toggleAll(false)">Disable All</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="toggleAll(true)">Enable All</button>
+          <button class="btn btn-sm px-3" style="background:var(--zmc-blue);color:#fff;" onclick="saveConfig()">
+            <i class="bi bi-floppy me-1"></i>Save Changes
+          </button>
+        </div>
+      </div>
+
+      <div class="p-3">
+        <div class="row mb-2 px-2">
+          <div class="col-1 text-muted" style="font-size:.72rem;"></div>
+          <div class="col-1 text-muted" style="font-size:.72rem;">ON/OFF</div>
+          <div class="col-3 text-muted" style="font-size:.72rem;">FIELD KEY</div>
+          <div class="col-4 text-muted" style="font-size:.72rem;">DISPLAY LABEL</div>
+          <div class="col-2 text-muted" style="font-size:.72rem;">TYPE</div>
+        </div>
+        <div id="field-list">
+          <div class="text-center text-muted py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="save-toast" class="position-fixed bottom-0 end-0 p-3" style="z-index:9999;display:none;">
+  <div class="toast align-items-center text-bg-success border-0 show">
+    <div class="d-flex">
+      <div class="toast-body"><i class="bi bi-check-circle me-2"></i>Field configuration saved!</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="document.getElementById('save-toast').style.display='none'"></button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentFormTypeId = null;
+let fieldData = [];
+
+// Load on start
+document.addEventListener('DOMContentLoaded', () => {
+  const firstFt = document.querySelector('.form-type-card');
+  if (firstFt) {
+    const id = parseInt(firstFt.getAttribute('onclick').match(/\d+/)[0]);
+    loadFormType(id, firstFt);
+  }
+});
+
+async function loadFormType(id, el) {
+  document.querySelectorAll('.form-type-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  currentFormTypeId = id;
+
+  const res = await fetch(`/config/fields/${id}`);
+  const json = await res.json();
+
+  document.getElementById('panel-title').textContent = json.form_type.name;
+  document.getElementById('panel-subtitle').textContent = json.form_type.code + ' · ' + json.fields.length + ' total fields';
+
+  fieldData = json.fields;
+  renderFields();
+}
+
+function renderFields() {
+  const list = document.getElementById('field-list');
+  list.innerHTML = fieldData.map((f, idx) => `
+    <div class="field-item ${f.enabled ? '' : 'disabled-field'}" id="field-item-${f.id}" data-id="${f.id}">
+      <span class="drag-handle"><i class="bi bi-grip-vertical"></i></span>
+      <div class="col-1">
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" role="switch"
+                 ${f.enabled ? 'checked' : ''}
+                 onchange="toggleField(${f.id}, this)"
+                 style="cursor:pointer;">
+        </div>
+      </div>
+      <div class="col-3">
+        <code style="font-size:.78rem;color:var(--zmc-blue);">${f.key}</code>
+      </div>
+      <div class="col-4">
+        <input type="text" class="form-control form-control-sm" value="${f.label}"
+               onchange="updateLabel(${f.id}, this.value)"
+               style="font-size:.83rem;border:1px solid #E2E8F0;">
+      </div>
+      <div class="col-2">
+        <span class="badge" style="background:#F1F5F9;color:#475569;font-size:.72rem;">${f.field_type}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleField(id, checkbox) {
+  const f = fieldData.find(f => f.id === id);
+  if (f) {
+    f.enabled = checkbox.checked;
+    document.getElementById('field-item-' + id).classList.toggle('disabled-field', !checkbox.checked);
+  }
+}
+
+function updateLabel(id, value) {
+  const f = fieldData.find(f => f.id === id);
+  if (f) f.label = value;
+}
+
+function toggleAll(enable) {
+  fieldData.forEach(f => f.enabled = enable);
+  renderFields();
+}
+
+async function saveConfig() {
+  const res = await fetch(`/config/fields/${currentFormTypeId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({fields: fieldData})
+  });
+  const json = await res.json();
+  if (json.success) {
+    const toast = document.getElementById('save-toast');
+    toast.style.display = 'block';
+    setTimeout(() => toast.style.display = 'none', 3000);
+  }
+}
+</script>
+{% endblock %}

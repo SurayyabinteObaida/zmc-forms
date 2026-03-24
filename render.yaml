@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: zmc-forms
+    runtime: python
+    pythonVersion: "3.11.9"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run:app
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: zmc-forms-db
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+
+databases:
+  - name: zmc-forms-db
+    databaseName: zmc_forms
+    user: zmc_user
+    plan: free

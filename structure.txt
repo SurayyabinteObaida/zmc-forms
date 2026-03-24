@@ -1,0 +1,74 @@
+Folder PATH listing for volume SO Personal
+Volume serial number is 129F-582E
+E:.
+|   .env
+|   .gitignore
+|   Procfile
+|   render.yaml
+|   requirements.txt
+|   run.py
+|   structure.txt
+|   
++---app
+|   |   models.py
+|   |   __init__.py
+|   |   
+|   +---blueprints
+|   |   |   config.py
+|   |   |   export.py
+|   |   |   main.py
+|   |   |   upload.py
+|   |   |   verify.py
+|   |   |   
+|   |   \---__pycache__
+|   |           config.cpython-313.pyc
+|   |           export.cpython-313.pyc
+|   |           main.cpython-313.pyc
+|   |           upload.cpython-313.pyc
+|   |           verify.cpython-313.pyc
+|   |           
+|   +---services
+|   |   |   excel_service.py
+|   |   |   extraction_service.py
+|   |   |   
+|   |   \---__pycache__
+|   |           excel_service.cpython-313.pyc
+|   |           extraction_service.cpython-313.pyc
+|   |           
+|   +---templates
+|   |   +---base
+|   |   |       layout.html
+|   |   |       
+|   |   +---dashboard
+|   |   |       index.html
+|   |   |       
+|   |   +---field_config
+|   |   |       index.html
+|   |   |       
+|   |   +---upload
+|   |   |       index.html
+|   |   |       
+|   |   \---verify
+|   |           index.html
+|   |           
+|   +---uploads
+|   |   \---f8e21df2-6b10-48cb-9ccf-6eeb7b0c68d9
+|   |           WhatsApp_Image_2026-02-18_at_12.12.51_PM_1.jpeg
+|   |           WhatsApp_Image_2026-02-18_at_12.12.51_PM_2.jpeg
+|   |           WhatsApp_Image_2026-02-18_at_12.12.51_PM_3.jpeg
+|   |           WhatsApp_Image_2026-02-18_at_12.12.51_PM_4.jpeg
+|   |           
+|   \---__pycache__
+|           models.cpython-313.pyc
+|           __init__.cpython-313.pyc
+|           
++---migrations
+|   |   alembic.ini
+|   |   env.py
+|   |   README
+|   |   script.py.mako
+|   |   
+|   \---versions
+\---__pycache__
+        run.cpython-313.pyc
+        
