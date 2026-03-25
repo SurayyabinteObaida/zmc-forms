@@ -1,7 +1,10 @@
 import json
 from datetime import datetime, timezone
-from flask import Blueprint, render_template, request, jsonify
+from io import BytesIO
+from flask import Blueprint, render_template, request, jsonify, send_file
 from app import db
+from app.services.excel_service import (generate_batch_excel,
+    get_column_config_for_ui, save_export_config)
 from app.models import (FormType, ExtractedRecord, Submission,
                          FlexoPrintingRecord, GravurePrintingRecord)
 
@@ -13,15 +16,6 @@ FORM_MODEL_MAP = {
 }
 
 
-def _parse_raw_extraction(raw: str) -> tuple[dict, dict]:
-    """Returns (consensus_data, model_results). Handles both old and new format."""
-    parsed = json.loads(raw or "{}")
-    if "consensus" in parsed:
-        return parsed["consensus"], parsed.get("model_results", {})
-    # Legacy format: raw_extraction was just the flat data dict
-    return parsed, {}
-
-
 @verify_bp.route("/<int:submission_id>")
 def index(submission_id):
     submission = Submission.query.get_or_404(submission_id)
@@ -30,13 +24,12 @@ def index(submission_id):
     enriched = []
     for rec in records:
         form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
-        raw_data, model_results = _parse_raw_extraction(rec.raw_extraction)
+        raw_data = json.loads(rec.raw_extraction or "{}")
         enabled_fields = form_type.enabled_fields() if form_type else []
         enriched.append({
             "record": rec,
             "form_type": form_type,
             "raw_data": raw_data,
-            "model_results": model_results,
             "enabled_fields": enabled_fields,
         })
 
@@ -48,7 +41,7 @@ def index(submission_id):
 def get_record(record_id):
     rec = ExtractedRecord.query.get_or_404(record_id)
     form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
-    data, model_results = _parse_raw_extraction(rec.raw_extraction)
+    data = json.loads(rec.raw_extraction or "{}")
     fields = [f.to_dict() for f in form_type.enabled_fields()] if form_type else []
 
     return jsonify({
@@ -61,14 +54,12 @@ def get_record(record_id):
         "error": rec.error_message,
         "fields": fields,
         "data": data,
-        "model_results": model_results,
         "image_path": rec.image_path,
     })
 
 
 @verify_bp.route("/save/<int:record_id>", methods=["POST"])
 def save_record(record_id):
-    """Save verified data for a single record into the typed table."""
     rec = ExtractedRecord.query.get_or_404(record_id)
     form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
 
@@ -101,7 +92,6 @@ def save_record(record_id):
 
 @verify_bp.route("/save-batch/<int:submission_id>", methods=["POST"])
 def save_batch(submission_id):
-    """Save all verified records in a submission."""
     submission = Submission.query.get_or_404(submission_id)
     payload = request.get_json()
     records_data = payload.get("records", {})
@@ -147,10 +137,60 @@ def save_batch(submission_id):
 
 @verify_bp.route("/update-form-type/<int:record_id>", methods=["POST"])
 def update_form_type(record_id):
-    """Manually override the form type for a record."""
     rec = ExtractedRecord.query.get_or_404(record_id)
     payload = request.get_json()
     form_type_id = payload.get("form_type_id")
     rec.form_type_id = form_type_id
     db.session.commit()
+    return jsonify({"success": True})
+
+
+@verify_bp.route("/export-batch/<int:submission_id>", methods=["GET"])
+def export_batch(submission_id):
+    submission = Submission.query.get_or_404(submission_id)
+    record_id = request.args.get("record_id", type=int)
+
+    # Fetch records
+    if record_id:
+        records = ExtractedRecord.query.filter_by(
+            submission_id=submission_id,
+            id=record_id
+        ).all()
+    else:
+        records = ExtractedRecord.query.filter_by(
+            submission_id=submission_id
+        ).all()
+
+    if not records:
+        return jsonify({"error": "No records found"}), 404
+
+    try:
+        xlsx_bytes = generate_batch_excel(
+            batch_id=str(submission_id),
+            records=records
+        )
+        output = BytesIO(xlsx_bytes)
+        output.seek(0)
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"batch_{submission_id}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@verify_bp.route("/export-columns", methods=["GET"])
+def get_export_columns():
+    return jsonify(get_column_config_for_ui())
+
+
+@verify_bp.route("/export-columns", methods=["POST"])
+def save_export_columns():
+    payload = request.get_json()
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Expected a JSON object"}), 400
+    save_export_config(payload)
     return jsonify({"success": True})

@@ -23,10 +23,6 @@ def index():
 
 @upload_bp.route("/process", methods=["POST"])
 def process():
-    """
-    Receives uploaded images, runs AI extraction on each,
-    creates a Submission + ExtractedRecord rows, returns batch_id.
-    """
     files = request.files.getlist("files")
     if not files or all(f.filename == "" for f in files):
         return jsonify({"error": "No files uploaded"}), 400
@@ -50,21 +46,14 @@ def process():
         image_path = os.path.join(upload_dir, filename)
         file.save(image_path)
 
-        # Run AI extraction pipeline
         result = process_image(image_path, form_types)
-
-        # Store consensus + model_results together in raw_extraction
-        raw_extraction_payload = json.dumps({
-            "consensus": result["data"],
-            "model_results": result["model_results"],
-        })
 
         record = ExtractedRecord(
             submission_id=submission.id,
             form_type_id=result["form_type_id"],
             filename=filename,
             image_path=image_path,
-            raw_extraction=raw_extraction_payload,
+            raw_extraction=json.dumps(result["data"]),
             confidence=result["confidence"],
             status="extracted" if not result["error"] else "error",
             error_message=result["error"],

@@ -178,3 +178,84 @@ async function saveConfig() {
 }
 </script>
 {% endblock %}
+<!-- Export Column Settings Widget
+     Drop this anywhere in your settings page.
+     Calls /verify/export-columns GET/POST.
+     Config is persisted server-side in export_config.json.
+-->
+<div class="bg-white rounded-3 border p-4" style="border-color:#E2E8F0 !important;">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h6 class="mb-0 fw-bold">Excel Export Columns</h6>
+      <small class="text-muted">Choose which columns appear in exported Excel files</small>
+    </div>
+    <button class="btn btn-sm px-4" style="background:#1F4E79;color:#fff;" onclick="saveExportColumns()">
+      <i class="bi bi-floppy me-1"></i>Save
+    </button>
+  </div>
+
+  <div id="export-col-list" class="row g-2">
+    <div class="text-muted text-center py-3"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>
+  </div>
+
+  <div id="export-col-msg" class="mt-2" style="display:none;"></div>
+</div>
+
+<style>
+.col-toggle { display:flex; align-items:center; gap:.5rem; padding:.4rem .6rem;
+              border:1px solid #E2E8F0; border-radius:6px; font-size:.82rem; }
+.col-toggle.mandatory { opacity:.55; }
+.col-toggle .badge-formula { font-size:.65rem; background:#EDE9FE; color:#5B21B6;
+                              border-radius:3px; padding:1px 5px; }
+</style>
+
+<script>
+async function loadExportColumns() {
+  const res = await fetch('/verify/export-columns');
+  const cols = await res.json();
+  const list = document.getElementById('export-col-list');
+  list.innerHTML = cols.map(col => `
+    <div class="col-md-4 col-sm-6">
+      <label class="col-toggle ${col.mandatory ? 'mandatory' : ''}">
+        <input type="checkbox" name="export_col" value="${col.key}"
+               ${col.enabled ? 'checked' : ''}
+               ${col.mandatory ? 'disabled' : ''}
+               onchange="onColToggle(this)">
+        <span>${col.label}</span>
+        ${col.is_formula ? '<span class="badge-formula">formula</span>' : ''}
+      </label>
+    </div>`).join('');
+}
+
+function onColToggle(cb) {
+  // visual feedback only — actual save on button click
+}
+
+async function saveExportColumns() {
+  const config = {};
+  document.querySelectorAll('input[name="export_col"]').forEach(cb => {
+    config[cb.value] = cb.checked;
+  });
+  // Re-enable mandatory ones
+  document.querySelectorAll('input[name="export_col"][disabled]').forEach(cb => {
+    config[cb.value] = true;
+  });
+
+  const res = await fetch('/verify/export-columns', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(config)
+  });
+  const json = await res.json();
+  const msg = document.getElementById('export-col-msg');
+  msg.style.display = 'block';
+  if (json.success) {
+    msg.innerHTML = '<div class="alert alert-success py-2 mb-0">✓ Export column settings saved.</div>';
+  } else {
+    msg.innerHTML = '<div class="alert alert-danger py-2 mb-0">Error saving settings.</div>';
+  }
+  setTimeout(() => msg.style.display = 'none', 3000);
+}
+
+document.addEventListener('DOMContentLoaded', loadExportColumns);
+</script>

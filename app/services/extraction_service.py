@@ -1,183 +1,637 @@
-"""
-extraction_service.py
-Handles image-to-structured-data extraction via OpenAI Vision API.
-Uses 4 GPT models in parallel with majority-vote consensus for accuracy.
-"""
-import os
-import json
-import base64
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from collections import Counter
-from openai import OpenAI
-from app.models import FormType
+{% extends "base/layout.html" %}
+{% block title %}Verify Extraction{% endblock %}
+{% block breadcrumb %}Upload Forms / Verify Extraction{% endblock %}
 
+{% block head %}
+<style>
+.record-tab { cursor:pointer; border:2px solid #E2E8F0; border-radius:10px; padding:.75rem 1rem;
+              transition:all .15s; background:#fff; margin-bottom:.5rem; }
+.record-tab:hover { border-color:var(--zmc-blue-light); }
+.record-tab.active { border-color:var(--zmc-blue); background:#EBF4FF; }
+.record-tab .form-badge { font-size:.7rem; }
+.field-group-label { font-size:.7rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+                     color:#94A3B8; margin:1rem 0 .5rem; border-top:1px solid #F1F5F9; padding-top:1rem; }
+.field-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:.5rem; }
+@media(max-width:768px) { .field-row { grid-template-columns:1fr; } }
+.verify-input { border:1px solid #E2E8F0; border-radius:6px; padding:.35rem .65rem; font-size:.84rem;
+                width:100%; transition:border-color .15s; }
+.verify-input:focus { outline:none; border-color:var(--zmc-blue-light); box-shadow:0 0 0 3px rgba(46,117,182,.1); }
+.verify-input.modified { border-color:var(--zmc-accent); background:#FFFBEB; }
+.json-view { background:#0F172A; color:#94A3B8; border-radius:10px; font-family:monospace;
+             font-size:.8rem; padding:1.25rem; max-height:500px; overflow-y:auto; }
+.save-all-bar { position:sticky; bottom:0; background:#fff; border-top:2px solid #E2E8F0; padding:1rem 1.5rem;
+                margin:-1.75rem; margin-top:1.5rem; z-index:100; }
+.correction-badge { font-size:.68rem; background:#FFF3CD; color:#856404; border:1px solid #FFE69C;
+                    border-radius:4px; padding:1px 5px; margin-left:4px; }
+.verify-input.auto-corrected { border-color:#F59E0B; background:#FFFBEB; }
+.verify-input.auto-corrected:focus { box-shadow:0 0 0 3px rgba(245,158,11,.15); }
 
-def _get_client():
-    return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+/* ── Column selector modal ── */
+.col-modal-backdrop {
+    position:fixed; inset:0;
+    background:rgba(15,25,40,.45);
+    display:flex; align-items:center; justify-content:center;
+    z-index:1050;
+}
+.col-modal-backdrop.hidden { display:none; }
+.col-modal-box {
+    background:#fff;
+    border-radius:8px;
+    width:540px;
+    max-height:84vh;
+    display:flex;
+    flex-direction:column;
+    box-shadow:0 8px 32px rgba(0,0,0,.18);
+}
+.col-modal-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:14px 20px;
+    border-bottom:1px solid #E2E8F0;
+    font-size:.88rem;
+    font-weight:600;
+    color:#1e2d3d;
+}
+.col-modal-close {
+    background:none; border:none;
+    font-size:1.1rem; cursor:pointer;
+    color:#94A3B8; line-height:1; padding:0 2px;
+}
+.col-modal-close:hover { color:#1e2d3d; }
+.col-modal-body {
+    padding:16px 20px;
+    overflow-y:auto;
+    flex:1;
+}
+.col-quick-actions {
+    font-size:.78rem;
+    margin-bottom:14px;
+    color:#64748B;
+}
+.col-link-btn {
+    background:none; border:none;
+    color:#2a6496; cursor:pointer;
+    font-size:.78rem; padding:0;
+    text-decoration:underline;
+}
+.col-link-btn:hover { color:#1a4a76; }
+.col-section-label {
+    font-size:.7rem;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:#94A3B8;
+    margin:14px 0 8px;
+    font-weight:700;
+    border-top:1px solid #F1F5F9;
+    padding-top:10px;
+}
+.col-section-label:first-of-type { border-top:none; padding-top:0; margin-top:0; }
+.col-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:2px 12px;
+}
+.col-item {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:5px 6px;
+    border-radius:4px;
+    font-size:.81rem;
+    color:#2a3a4a;
+    cursor:pointer;
+}
+.col-item:hover { background:#F8FAFC; }
+.col-item.is-mandatory { opacity:.5; cursor:default; }
+.col-item input[type="checkbox"] {
+    width:14px; height:14px;
+    accent-color:#2a6496;
+    cursor:pointer;
+    flex-shrink:0;
+}
+.col-item.is-mandatory input { cursor:not-allowed; }
+.col-item .col-lbl { flex:1; }
+.col-calc-tag {
+    font-size:.67rem;
+    color:#94A3B8;
+    background:#F1F5F9;
+    padding:1px 5px;
+    border-radius:3px;
+    flex-shrink:0;
+}
+.col-modal-footer {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:12px 20px;
+    border-top:1px solid #E2E8F0;
+}
+.col-save-msg {
+    font-size:.78rem;
+    color:#3a7a3a;
+    margin-right:auto;
+    min-width:60px;
+}
+</style>
+{% endblock %}
 
-EXTRACTION_MODELS = ["gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-mini", "gpt-4-turbo"]
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 style="font-weight:700;">Verify Extracted Data</h4>
+    <p class="text-muted mb-0" style="font-size:.875rem;">
+      Batch: <code>{{ submission.batch_id[:20] }}…</code> ·
+      {{ enriched | length }} form(s) extracted ·
+      Uploaded {{ submission.uploaded_at.strftime('%Y-%m-%d %H:%M') }}
+    </p>
+  </div>
+  <a href="{{ url_for('upload.index') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>New Upload
+  </a>
+</div>
 
-FORM_IDENTIFICATION_PROMPT = """You are an expert at reading manufacturing production forms.
-Look at this image carefully. Identify which type of form it is.
+{% if enriched %}
+<div class="row g-3">
+  <!-- Left: Record list -->
+  <div class="col-lg-3">
+    <div class="bg-white rounded-3 border p-3 sticky-top" style="border-color:#E2E8F0 !important;top:1rem;">
+      <small class="text-muted fw-600 d-block mb-2">FORMS IN BATCH</small>
+      {% for item in enriched %}
+      <div class="record-tab {% if loop.first %}active{% endif %}"
+           id="tab-{{ item.record.id }}"
+           onclick="switchRecord({{ item.record.id }})">
+        <div class="d-flex align-items-start justify-content-between gap-1">
+          <div style="min-width:0;">
+            <div class="fw-600 text-truncate" style="font-size:.83rem;font-weight:600;">
+              {{ item.record.filename or 'Form ' + loop.index|string }}
+            </div>
+            {% if item.form_type %}
+            <span class="badge form-badge mt-1" style="background:var(--zmc-blue);color:#fff;">
+              {{ item.form_type.code }}
+            </span>
+            {% else %}
+            <span class="badge badge-error form-badge mt-1">Unidentified</span>
+            {% endif %}
+          </div>
+          {% if item.record.status == 'saved' %}
+          <i class="bi bi-check-circle-fill text-success mt-1 flex-shrink-0"></i>
+          {% elif item.record.error_message %}
+          <i class="bi bi-exclamation-circle-fill text-danger mt-1 flex-shrink-0"></i>
+          {% else %}
+          <i class="bi bi-circle text-muted mt-1 flex-shrink-0"></i>
+          {% endif %}
+        </div>
+        {% if item.record.confidence %}
+        <div class="mt-2">
+          <div class="confidence-bar">
+            <div class="confidence-fill" style="width:{{ (item.record.confidence * 100)|round|int }}%"></div>
+          </div>
+          <small class="text-muted" style="font-size:.7rem;">
+            {{ (item.record.confidence * 100)|round|int }}% confidence
+          </small>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
 
-Known form types:
-1. Flexo Printing Production Report (form code: F-PRD/01.2) - has fields like Cylinder Size, No. of Colors, Block #, Tube/Sheet, Bag Size
-2. Gravure Printing Production Report (form code: F-PRD/01.1) - has fields like Cylinder Length x Cir, Color Man Ink GSM, Cylinder Qty
+  <!-- Right: Verification panel -->
+  <div class="col-lg-9">
+    {% for item in enriched %}
+    <div id="panel-{{ item.record.id }}" class="record-panel" style="{% if not loop.first %}display:none;{% endif %}">
+      <div class="bg-white rounded-3 border" style="border-color:#E2E8F0 !important;">
 
-Respond with ONLY a JSON object:
-{
-  "form_code": "F-PRD/01.2" or "F-PRD/01.1" or "UNKNOWN",
-  "confidence": 0.0 to 1.0,
-  "reasoning": "brief reason"
-}"""
+        <!-- Panel Header -->
+        <div class="p-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div>
+            <h6 class="mb-0 fw-600" style="font-weight:600;">
+              {{ item.form_type.name if item.form_type else 'Unknown Form Type' }}
+            </h6>
+            <small class="text-muted">{{ item.record.filename }}</small>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            {% if item.record.error_message %}
+            <span class="badge badge-error">{{ item.record.error_message[:60] }}</span>
+            {% endif %}
 
+            <!-- Export this record's batch -->
+            <button class="btn btn-sm btn-outline-success"
+                    onclick="exportBatch({{ submission.id }}, {{ item.record.id }})"
+                    title="Export this batch to Excel">
+              <i class="bi bi-file-earmark-excel me-1"></i>Export Batch
+            </button>
 
-def _build_extraction_prompt(form_type: FormType) -> str:
-    enabled_fields = form_type.enabled_fields()
-    field_list = "\n".join(
-        f'  "{f.key}": <{f.field_type} or null if not visible>  # {f.label}'
-        for f in enabled_fields
-    )
-    return f"""You are an expert at reading hand-filled manufacturing production forms.
-Extract all visible field values from this {form_type.name}.
+            <!-- Export column selector -->
+            <button class="btn btn-sm btn-outline-secondary"
+                    onclick="openColModal()"
+                    title="Configure export columns">
+              <i class="bi bi-layout-three-columns me-1"></i>Columns
+            </button>
 
-Return ONLY a valid JSON object with these exact keys (use null for any field not visible or illegible):
-{{
-{field_list}
-}}
+            <!-- Form type override -->
+            <select class="form-select form-select-sm" style="width:auto;font-size:.8rem;"
+                    onchange="overrideFormType({{ item.record.id }}, this.value)">
+              <option value="">— Override Form Type —</option>
+              {% for ft in form_types %}
+              <option value="{{ ft.id }}" {% if item.form_type and item.form_type.id == ft.id %}selected{% endif %}>
+                {{ ft.code }} – {{ ft.name }}
+              </option>
+              {% endfor %}
+            </select>
 
-Rules:
-- Extract exactly what is written, do not calculate or infer values
-- For numbers, return numeric values without units
-- For dates: look carefully for a field labeled 'Date' or 'Print Date'. 
-  The date is typically handwritten in DD/MM/YYYY or DD-MM-YYYY format.
-  Return it exactly as written (e.g. "18/02/2026"). If only partially visible, return what is readable.
-- For illegible handwriting, use null
-- Do not add any explanation outside the JSON"""
+            <!-- View toggle -->
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-secondary active" onclick="setView({{ item.record.id }}, 'form', this)">
+                <i class="bi bi-pencil-square"></i>
+              </button>
+              <button class="btn btn-outline-secondary" onclick="setView({{ item.record.id }}, 'json', this)">
+                <i class="bi bi-braces"></i>
+              </button>
+            </div>
+          </div>
+        </div>
 
+        <!-- Form View -->
+        <div id="form-view-{{ item.record.id }}" class="p-4">
+          {% if item.enabled_fields %}
+          <form id="verify-form-{{ item.record.id }}">
+            <div class="row g-3">
+              {% for field in item.enabled_fields %}
+              <div class="col-md-6">
+                <label class="field-label mb-1 d-block" style="font-size:.78rem;font-weight:600;color:#374151;">
+                  {{ field.label }}
+                  <span class="text-muted fw-400" style="font-weight:400;">({{ field.field_type }})</span>
+                </label>
+                <input
+                  class="verify-input{% if item.corrections and field.key in item.corrections %} auto-corrected{% endif %}"
+                  type="{{ 'number' if field.field_type == 'number' else 'text' }}"
+                  name="{{ field.key }}"
+                  value="{{ item.raw_data.get(field.key, '') or '' }}"
+                  placeholder="{{ field.label }}"
+                  data-original="{{ item.raw_data.get(field.key, '') or '' }}"
+                  oninput="onFieldChange(this)"
+                  step="any"
+                />
+                {% if item.corrections and field.key in item.corrections %}
+                <span class="correction-badge" title="Auto-corrected from: {{ item.corrections[field.key].original }} ({{ item.corrections[field.key].score }}% match)">
+                  auto-corrected
+                </span>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </form>
+          {% else %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
+            No fields configured or form type could not be identified.<br>
+            <small>Use the form type override above to assign this form manually.</small>
+          </div>
+          {% endif %}
+        </div>
 
-def _encode_image(image_path: str):
-    ext = image_path.rsplit(".", 1)[-1].lower()
-    media_type_map = {
-        "jpg": "image/jpeg", "jpeg": "image/jpeg",
-        "png": "image/png", "webp": "image/webp", "gif": "image/gif"
+        <!-- JSON View -->
+        <div id="json-view-{{ item.record.id }}" class="p-4" style="display:none;">
+          <div class="json-view" id="json-display-{{ item.record.id }}">
+            {{ item.raw_data | tojson(indent=2) }}
+          </div>
+        </div>
+
+        <!-- Panel Footer -->
+        <div class="p-3 border-top d-flex align-items-center justify-content-between">
+          <button class="btn btn-sm btn-outline-secondary" onclick="resetForm({{ item.record.id }})">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Changes
+          </button>
+          <button class="btn btn-sm px-4" style="background:var(--zmc-blue);color:#fff;"
+                  onclick="saveRecord({{ item.record.id }})"
+                  id="save-btn-{{ item.record.id }}"
+                  {% if item.record.status == 'saved' %}disabled{% endif %}>
+            {% if item.record.status == 'saved' %}
+            <i class="bi bi-check2 me-1"></i>Already Saved
+            {% else %}
+            <i class="bi bi-floppy me-1"></i>Save This Record
+            {% endif %}
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- Save All Bar -->
+    <div class="save-all-bar d-flex align-items-center justify-content-between">
+      <div>
+        <span id="saved-count" class="fw-600" style="font-weight:600;">0</span>
+        <span class="text-muted"> of {{ enriched | length }} records saved</span>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-success px-3 py-2"
+                onclick="exportBatch({{ submission.id }}, null)"
+                title="Export entire batch to Excel">
+          <i class="bi bi-file-earmark-excel me-1"></i>Export Entire Batch
+        </button>
+        <button class="btn px-4 py-2" style="background:var(--zmc-success, #198754);color:#fff;font-weight:600;"
+                onclick="saveAll()">
+          <i class="bi bi-check2-all me-2"></i>Save All & Finish
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+  <h6>No records found in this submission.</h6>
+  <a href="{{ url_for('upload.index') }}" class="btn btn-primary mt-2">Upload Again</a>
+</div>
+{% endif %}
+
+<!-- ── Export Column Selector Modal ── -->
+<div id="col-modal" class="col-modal-backdrop hidden">
+  <div class="col-modal-box">
+    <div class="col-modal-header">
+      <span>Export Column Selection</span>
+      <button type="button" class="col-modal-close" onclick="closeColModal()">&times;</button>
+    </div>
+
+    <div class="col-modal-body">
+      <div class="col-quick-actions">
+        <button type="button" class="col-link-btn" onclick="colToggleAll(true)">Enable all</button>
+        <span style="margin:0 6px;color:#CBD5E1;">·</span>
+        <button type="button" class="col-link-btn" onclick="colToggleAll(false)">Disable all</button>
+      </div>
+
+      <div class="col-section-label">Data columns</div>
+      <div id="col-grid-data" class="col-grid"></div>
+
+      <div class="col-section-label">Calculated columns</div>
+      <div id="col-grid-calc" class="col-grid"></div>
+    </div>
+
+    <div class="col-modal-footer">
+      <span id="col-save-msg" class="col-save-msg"></span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="closeColModal()">Cancel</button>
+      <button type="button" class="btn btn-sm" style="background:var(--zmc-blue);color:#fff;" onclick="saveColConfig()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pass data to JS -->
+<script>
+const SUBMISSION_ID = {{ submission.id }};
+const FORM_TYPES_AVAILABLE = {{ form_types | map(attribute='id') | list | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const savedState = {};
+const modifiedState = {};
+let savedCount = 0;
+
+function switchRecord(id) {
+  document.querySelectorAll('.record-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.record-panel').forEach(p => p.style.display = 'none');
+  document.getElementById('tab-' + id).classList.add('active');
+  document.getElementById('panel-' + id).style.display = 'block';
+}
+
+function setView(id, view, btn) {
+  const fv = document.getElementById('form-view-' + id);
+  const jv = document.getElementById('json-view-' + id);
+  btn.closest('.btn-group').querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  if (view === 'json') {
+    fv.style.display = 'none'; jv.style.display = 'block';
+    const data = collectFormData(id);
+    document.getElementById('json-display-' + id).textContent = JSON.stringify(data, null, 2);
+  } else {
+    fv.style.display = 'block'; jv.style.display = 'none';
+  }
+}
+
+function onFieldChange(input) {
+  input.classList.toggle('modified', input.value !== input.dataset.original);
+}
+
+function resetForm(id) {
+  const form = document.getElementById('verify-form-' + id);
+  if (!form) return;
+  form.querySelectorAll('.verify-input').forEach(inp => {
+    inp.value = inp.dataset.original;
+    inp.classList.remove('modified');
+  });
+}
+
+function collectFormData(id) {
+  const form = document.getElementById('verify-form-' + id);
+  if (!form) return {};
+  const data = {};
+  form.querySelectorAll('.verify-input').forEach(inp => {
+    data[inp.name] = inp.value === '' ? null : inp.value;
+  });
+  return data;
+}
+
+async function saveRecord(id) {
+  const btn = document.getElementById('save-btn-' + id);
+  const data = collectFormData(id);
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+
+  try {
+    const res = await fetch(`/verify/save/${id}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({data})
+    });
+    const json = await res.json();
+    if (json.success) {
+      btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Saved';
+      btn.style.background = '#059669';
+      const tab = document.getElementById('tab-' + id);
+      const icon = tab.querySelector('.bi-circle, .bi-exclamation-circle-fill');
+      if (icon) { icon.className = 'bi bi-check-circle-fill text-success mt-1 flex-shrink-0'; }
+      savedCount++;
+      document.getElementById('saved-count').textContent = savedCount;
+    } else {
+      throw new Error(json.error || 'Save failed');
     }
-    media_type = media_type_map.get(ext, "image/jpeg")
-    with open(image_path, "rb") as f:
-        data = base64.standard_b64encode(f.read()).decode("utf-8")
-    return data, media_type
+  } catch(err) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Retry';
+    btn.style.background = '#DC2626';
+    alert('Error saving record: ' + err.message);
+  }
+}
 
+async function saveAll() {
+  const panels = document.querySelectorAll('.record-panel');
+  const allData = {};
 
-def _parse_json_response(text: str) -> dict:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-    return json.loads(text.strip())
+  panels.forEach(panel => {
+    const id = panel.id.replace('panel-', '');
+    const saveBtn = document.getElementById('save-btn-' + id);
+    if (saveBtn && saveBtn.disabled && saveBtn.textContent.includes('Saved')) return;
+    allData[id] = collectFormData(parseInt(id));
+  });
 
+  if (!Object.keys(allData).length) {
+    alert('All records are already saved!');
+    return;
+  }
 
-def _majority_vote(results: list[dict]) -> dict:
-    if not results:
-        return {}
-    all_keys = set(k for r in results for k in r.keys())
-    consensus = {}
-    for key in all_keys:
-        values = [r.get(key) for r in results]
-        str_values = [json.dumps(v, sort_keys=True) for v in values]
-        most_common_str, count = Counter(str_values).most_common(1)[0]
-        if count >= 2:
-            consensus[key] = json.loads(most_common_str)
-        else:
-            non_null = [v for v in values if v is not None]
-            consensus[key] = non_null[0] if non_null else None
-    return consensus
+  const confirmed = confirm(`Save ${Object.keys(allData).length} record(s) to database?`);
+  if (!confirmed) return;
 
+  try {
+    const res = await fetch(`/verify/save-batch/${SUBMISSION_ID}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({records: allData})
+    });
+    const json = await res.json();
+    if (json.success) {
+      json.saved.forEach(id => {
+        const btn = document.getElementById('save-btn-' + id);
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Saved'; btn.style.background='#059669'; }
+        const tab = document.getElementById('tab-' + id);
+        if (tab) { const icon = tab.querySelector('.bi'); if(icon) icon.className='bi bi-check-circle-fill text-success mt-1 flex-shrink-0'; }
+      });
+      document.getElementById('saved-count').textContent = json.saved.length;
+      alert(`${json.saved.length} record(s) saved successfully!${json.errors.length ? '\nErrors: ' + json.errors.join(', ') : ''}`);
+    }
+  } catch(err) {
+    alert('Batch save failed: ' + err.message);
+  }
+}
 
-def identify_form(image_path: str) -> dict:
-    data, media_type = _encode_image(image_path)
-    response = _get_client().chat.completions.create(
-        model="gpt-4o",
-        max_tokens=256,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}", "detail": "low"}},
-                {"type": "text", "text": FORM_IDENTIFICATION_PROMPT},
-            ],
-        }],
-    )
-    return _parse_json_response(response.choices[0].message.content)
+async function overrideFormType(recordId, formTypeId) {
+  if (!formTypeId) return;
+  await fetch(`/verify/update-form-type/${recordId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({form_type_id: parseInt(formTypeId)})
+  });
+  window.location.reload();
+}
 
+async function exportBatch(submissionId, recordId) {
+  const url = recordId
+    ? `/verify/export-batch/${submissionId}?record_id=${recordId}`
+    : `/verify/export-batch/${submissionId}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `batch_${submissionId}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+  } catch(err) {
+    alert('Export failed: ' + err.message);
+  }
+}
 
-def _extract_with_model(model: str, image_data: str, media_type: str, prompt: str) -> dict:
-    response = _get_client().chat.completions.create(
-        model=model,
-        max_tokens=2048,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_data}", "detail": "high"}},
-                {"type": "text", "text": prompt},
-            ],
-        }],
-    )
-    return _parse_json_response(response.choices[0].message.content)
+/* ── Column selector modal ── */
+async function openColModal() {
+  document.getElementById('col-save-msg').textContent = '';
+  document.getElementById('col-grid-data').innerHTML = '';
+  document.getElementById('col-grid-calc').innerHTML = '';
 
+  let columns;
+  try {
+    const res = await fetch('/verify/export-columns');
+    columns = await res.json();
+  } catch {
+    alert('Failed to load column configuration.');
+    return;
+  }
 
-def extract_fields(image_path: str, form_type: FormType) -> dict:
-    """Returns {"consensus": {...}, "model_results": {"gpt-4o": {...}, ...}}"""
-    image_data, media_type = _encode_image(image_path)
-    prompt = _build_extraction_prompt(form_type)
+  columns.forEach(col => {
+    const label = document.createElement('label');
+    label.className = 'col-item' + (col.mandatory ? ' is-mandatory' : '');
 
-    model_results = {}
-    with ThreadPoolExecutor(max_workers=len(EXTRACTION_MODELS)) as executor:
-        futures = {
-            executor.submit(_extract_with_model, model, image_data, media_type, prompt): model
-            for model in EXTRACTION_MODELS
-        }
-        for future in as_completed(futures):
-            model = futures[future]
-            try:
-                model_results[model] = future.result()
-            except Exception as e:
-                print(f"[extraction_service] Model {model} failed: {e}")
-                model_results[model] = None
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.key = col.key;
+    cb.checked = col.enabled;
+    if (col.mandatory) cb.disabled = true;
 
-    successful = [v for v in model_results.values() if v is not None]
-    if not successful:
-        raise RuntimeError("All models failed during extraction.")
+    const lbl = document.createElement('span');
+    lbl.className = 'col-lbl';
+    lbl.textContent = col.label;
 
-    consensus = _majority_vote(successful)
-    return {"consensus": consensus, "model_results": model_results}
+    label.appendChild(cb);
+    label.appendChild(lbl);
 
+    if (col.is_formula) {
+      const tag = document.createElement('span');
+      tag.className = 'col-calc-tag';
+      tag.textContent = 'calc';
+      label.appendChild(tag);
+      document.getElementById('col-grid-calc').appendChild(label);
+    } else {
+      document.getElementById('col-grid-data').appendChild(label);
+    }
+  });
 
-def process_image(image_path: str, form_types: list) -> dict:
-    try:
-        id_result = identify_form(image_path)
-        form_code = id_result.get("form_code", "UNKNOWN")
-        confidence = id_result.get("confidence", 0.0)
+  document.getElementById('col-modal').classList.remove('hidden');
+}
 
-        matched_form = next((ft for ft in form_types if ft.code == form_code), None)
+function closeColModal() {
+  document.getElementById('col-modal').classList.add('hidden');
+}
 
-        if not matched_form:
-            return {"form_code": form_code, "form_type_id": None, "data": {},
-                    "model_results": {}, "confidence": confidence,
-                    "error": f"Could not match form code '{form_code}'."}
+function colToggleAll(state) {
+  document.querySelectorAll('#col-modal .col-item:not(.is-mandatory) input').forEach(cb => {
+    cb.checked = state;
+  });
+}
 
-        extracted = extract_fields(image_path, matched_form)
-        return {
-            "form_code": form_code,
-            "form_type_id": matched_form.id,
-            "data": extracted["consensus"],
-            "model_results": extracted["model_results"],
-            "confidence": confidence,
-            "error": None,
-        }
+async function saveColConfig() {
+  const config = {};
+  document.querySelectorAll('#col-modal input[data-key]').forEach(cb => {
+    config[cb.dataset.key] = cb.checked;
+  });
 
-    except json.JSONDecodeError as e:
-        return {"form_code": None, "form_type_id": None, "data": {}, "model_results": {},
-                "confidence": 0.0, "error": f"JSON parse error: {str(e)}"}
-    except Exception as e:
-        return {"form_code": None, "form_type_id": None, "data": {}, "model_results": {},
-                "confidence": 0.0, "error": str(e)}
+  const msg = document.getElementById('col-save-msg');
+  try {
+    const res = await fetch('/verify/export-columns', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(config),
+    });
+    const data = await res.json();
+    if (data.success) {
+      msg.style.color = '#3a7a3a';
+      msg.textContent = 'Saved.';
+      setTimeout(closeColModal, 700);
+    } else {
+      msg.style.color = '#a33';
+      msg.textContent = 'Save failed.';
+    }
+  } catch {
+    msg.style.color = '#a33';
+    msg.textContent = 'Network error.';
+  }
+}
+
+/* Close modal on backdrop click */
+document.getElementById('col-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeColModal();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const tabs = document.querySelectorAll('.record-tab');
+  tabs.forEach(tab => {
+    if (tab.querySelector('.bi-check-circle-fill')) savedCount++;
+  });
+  document.getElementById('saved-count').textContent = savedCount;
+});
+</script>
+{% endblock %}
