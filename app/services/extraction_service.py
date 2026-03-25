@@ -1,7 +1,7 @@
 """
 extraction_service.py
 Handles image-to-structured-data extraction via OpenAI Vision API (GPT-4o).
-Includes fuzzy matching for job_name, printed_film, supplier fields.
+Two-layer validation: fuzzy matching + lookup validation.
 Enhanced bottom-section field detection for waste fields.
 """
 import os
@@ -13,51 +13,66 @@ from rapidfuzz import process, fuzz
 from app.models import FormType
 
 
-# ── Lookup tables (generated from FLEXO_PRINTING_MASTER.xlsx) ──────────────
-LOOKUP = {
-    "job_name": [
-        "FOCALLURE","TOUHEED/HAQ HALAL","SADAR APP","EVOLUTION","MTJ","DORUK","DUNKIN","RONIN",
-        "LUXEURS","CHECKMATE","MEJI BURGE BUN","MEJI RUSK","POLKA DOT","SKY NET","SHOP REX",
-        "DADI JAN","ZARPOSH","POLKA DOT SALE","MEJI BURGER BUN","MT SPECIAL GOL RUSK","BUZZAZI",
-        "LITTLE PEOPLE","BEGALLERY","147 STREET PIZZA","HEMANI","MONAL FABRICS","J.FABRIC GREEN",
-        "J.FABRICS BLACK","INSTA MALL","FINE FASHION","BACHAA PATY","BEJAAN HYGIEN",
-        "BAR TOWELS 75 PACK","LUXURU SOFT PACK","BAR TOWELS 24 PACK","MAKEUP CITY","DARVAZA.PK",
-        "STITCHER","GRANNYS ORGANIC","HIGHFY","ZELLBURY","500 DIRHAM/AREENA","J. FABRICS GREEN",
-        "YAQOOB TEX","DYNASTY","J. FABRICS BLACK","RAJA FABIRCS","AESTHETIC GEN","ZED COURIER",
-        "MT RUSK","SMILE FINE TISSUE","COSMETICS CITY","KHYBER MEDICAL","K-JUNCTION","RIDER",
-        "JAZMIN","ANEELA'S","LUXURY SOFT","GRG","UPS","HIGH CLASS FABRICS","ARAMEX","ASIM JOFA",
-        "BOURAQ EXPRESS","TULIP","TELEBRAND EXPRESS","ZURAJ","ELEGANCIA","ZAIB BY NIMSAY",
-        "AJWA","CHASE VALUE","BAGALLERY","ACCOUTR","BODY & BLAST","TRIMCO","UNIVERSAL",
-        "O-TWO-O","MASTER","MEJI RUSH","FASHION WEEK","RAJA FASHION","LEZAAR VELOOR",
-        "POLKA DOT SOLVE TO GET 5% DISCOUNT","MOHSIN RASHID","RALVIL TEN",
-    ],
-    "printed_film": [
-        "PE 2 LAYER WHITE/GREY","PE MILKY","PE NATURAL","PP","HD MILKY","PE BLACK","BOPP","PET",
-        "M-PET","BOPP HOLO","HD PURE","BOPP RAINBOW","HD","PE PINK","CPP","PAPER","MATT BOPP",
-        "PIVA","EVA","NON WOVEN","PE 2 LAYER NATURAL/MILKY","PE","PE 2 LAYER WHITE/BLACK",
-        "PE 2 LAYER NATURAL/BLACK","EVA MATT",
-    ],
-    "supplier": [
-        "SUBHAN","ZOHAIB","OLEFINS","MACPAC","NOVATEX","AHMED HD","G-PAK","SHABBIR PP",
-        "U-FILER","AFIL FODS","BOPP","MUNDIA EXPORT","SALMAN BWANI","CHWALA CORP","ZMC",
-    ],
-}
+# ── Lookup Tables Import ───────────────────────────────────────────────────
+try:
+    from app.services.lookup_tables import LOOKUP_TABLES
+    # Expected structure: {"job_name": [...], "printed_film": [...], "supplier": [...]}
+    LOOKUP = LOOKUP_TABLES
+except ImportError:
+    # Fallback to hardcoded lookups if lookup_tables.py not available
+    LOOKUP = {
+        "job_name": [
+            "147 STREET PIZZA", "14TH STREET PIZZA", "500 DIRHAM", "500 DIRHAM/AREENA",
+            "ACCOUTR", "AESTHETIC GEN", "AJWA", "AL HABIB", "ANEELA'S", "ARAMEX",
+            "ASIM JOFA", "BACHAA PATY", "BAGALLERY", "BEGALLERY", "BEJAAN HYGIEN",
+            "BODY & BLAST", "BOURAQ EXPRESS", "BUZZAZI", "CHASE VALUE", "CHECKMATE",
+            "COSMETICS CITY", "DADI JAN", "DARVAZA.PK", "DORUK", "DUNKIN", "DYNASTY",
+            "ELEGANCIA", "EVOLUTION", "FASHION WEEK", "FINE FASHION", "FOCALLURE",
+            "GRANNYS ORGANIC", "GRG", "HEMANI", "HIGH CLASS FABRICS", "HIGHFY",
+            "INSTA MALL", "J. FABRICS BLACK", "J. FABRICS GREEN", "J.FABRIC GREEN",
+            "J.FABRICS BLACK", "JAZMIN", "K-JUNCTION", "KHYBER MEDICAL", "LEZAAR VELOOR",
+            "LITTLE PEOPLE", "LUXEURS", "LUXURU SOFT PACK", "LUXURY SOFT", "MAKEUP CITY",
+            "MASTER", "MEJI BURGE BUN", "MEJI BURGER BUN", "MEJI RUSK", "MEJI RUSH",
+            "MONAL FABRICS", "MOHSIN RASHID", "MT RUSK", "MT SPECIAL GOL RUSK", "MTJ",
+            "O-TWO-O", "POLKA DOT", "POLKA DOT SALE", "POLKA DOT SOLVE TO GET 5% DISCOUNT",
+            "RAJA FABIRCS", "RAJA FASHION", "RALVIL TEN", "RIDER", "RONIN",
+            "SADAR APP", "SHOP REX", "SKY NET", "SMILE FINE TISSUE", "STITCHER",
+            "TELEBRAND EXPRESS", "TOUHEED/HAQ HALAL", "TRIMCO", "TULIP", "UNIVERSAL",
+            "UPS", "YAQOOB TEX", "ZAIB BY NIMSAY", "ZARPOSH", "ZED COURIER",
+            "ZELLBURY", "ZURAJ",
+        ],
+        "printed_film": [
+            "BOPP", "BOPP HOLO", "BOPP RAINBOW", "CPP", "EVA", "EVA MATT",
+            "HD", "HD MILKY", "HD PURE", "M-PET", "MATT BOPP", "NON WOVEN",
+            "PAPER", "PE", "PE 2 LAYER NATURAL/BLACK", "PE 2 LAYER NATURAL/MILKY",
+            "PE 2 LAYER WHITE/BLACK", "PE 2 LAYER WHITE/GREY", "PE BLACK", "PE MILKY",
+            "PE NATURAL", "PE PINK", "PET", "PIVA", "PP",
+        ],
+        "supplier": [
+            "AFIL FODS", "AHMED HD", "BOPP", "CHWALA CORP", "G-PAK", "MACPAC",
+            "MUNDIA EXPORT", "NOVATEX", "OLEFINS", "SALMAN BWANI", "SHABBIR PP",
+            "SUBHAN", "U-FILER", "ZOHAIB", "ZMC",
+        ],
+    }
 
-# Field keys in extracted data that map to lookup categories
+
+# ── Field Mapping & Thresholds ─────────────────────────────────────────────
+# Maps extraction field keys to lookup categories
 FIELD_LOOKUP_MAP = {
-    "job_name":  "job_name",
-    "material":  "printed_film",   # actual field key used in FlexoPrintingRecord
-    "supplier":  "supplier",       # actual field key used in FlexoPrintingRecord
+    "job_name": "job_name",
+    "material": "printed_film",   # material field uses printed_film lookup
+    "supplier": "supplier",
 }
 
-AUTO_CORRECT_THRESHOLD = 85   # ≥ this → silently overwrite
-SUGGEST_THRESHOLD      = 60   # ≥ this → flag but still correct
+AUTO_CORRECT_THRESHOLD = 85   # ≥ this → silently auto-correct
+SUGGEST_THRESHOLD = 60        # ≥ this → flag but still correct
 
 
 def _get_client():
     return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
+# ── Form Identification ────────────────────────────────────────────────────
 FORM_IDENTIFICATION_PROMPT = """You are an expert at reading manufacturing production forms.
 Look at this image carefully. Identify which type of form it is.
 
@@ -74,6 +89,7 @@ Respond with ONLY a JSON object:
 
 
 def _build_extraction_prompt(form_type: FormType) -> str:
+    """Build extraction prompt with enhanced field location instructions."""
     current_year = datetime.now().year
     enabled_fields = form_type.enabled_fields()
     field_list = "\n".join(
@@ -151,6 +167,7 @@ Look carefully at the bottom-left area of the form for these values."""
 
 
 def _encode_image(image_path: str):
+    """Encode image to base64 with proper media type detection."""
     ext = image_path.rsplit(".", 1)[-1].lower()
     media_type_map = {
         "jpg": "image/jpeg", "jpeg": "image/jpeg",
@@ -163,6 +180,7 @@ def _encode_image(image_path: str):
 
 
 def _parse_json_response(text: str) -> dict:
+    """Parse JSON response, handling markdown code blocks."""
     text = text.strip()
     if text.startswith("```"):
         text = text.split("```")[1]
@@ -195,7 +213,7 @@ def _fix_date_year(value: str) -> str:
 
 def _fuzzy_correct(extracted: dict) -> tuple[dict, dict]:
     """
-    Apply fuzzy matching to lookup fields.
+    Layer 1: Apply fuzzy matching to lookup fields.
     Returns (corrected_data, corrections_log).
     corrections_log: {field: {original, corrected, score, auto}}
     """
@@ -207,7 +225,10 @@ def _fuzzy_correct(extracted: dict) -> tuple[dict, dict]:
         if not raw or not isinstance(raw, str):
             continue
 
-        candidates = LOOKUP[lookup_key]
+        candidates = LOOKUP.get(lookup_key, [])
+        if not candidates:
+            continue
+
         match, score, _ = process.extractOne(
             raw.upper(), [c.upper() for c in candidates],
             scorer=fuzz.token_sort_ratio
@@ -225,7 +246,32 @@ def _fuzzy_correct(extracted: dict) -> tuple[dict, dict]:
     return corrected, log
 
 
+def _validate_against_lookup(data: dict) -> dict:
+    """
+    Layer 2: Check if values exist in master lookup tables.
+    Returns validation_flags: {field: bool} where True = valid, False = not in lookup.
+    """
+    flags = {}
+    
+    for field_key, lookup_key in FIELD_LOOKUP_MAP.items():
+        value = data.get(field_key)
+        if not value or not isinstance(value, str):
+            flags[field_key] = True  # null/empty values don't need validation
+            continue
+        
+        candidates = LOOKUP.get(lookup_key, [])
+        if not candidates:
+            flags[field_key] = True  # no lookup available, skip validation
+            continue
+        
+        # Check if value exists in lookup (case-insensitive)
+        flags[field_key] = any(value.upper() == c.upper() for c in candidates)
+    
+    return flags
+
+
 def identify_form(image_path: str) -> dict:
+    """Identify form type from image."""
     data, media_type = _encode_image(image_path)
     response = _get_client().chat.completions.create(
         model="gpt-4o",
@@ -242,6 +288,7 @@ def identify_form(image_path: str) -> dict:
 
 
 def extract_fields(image_path: str, form_type: FormType) -> dict:
+    """Extract field values from image using GPT-4o Vision."""
     data, media_type = _encode_image(image_path)
     prompt = _build_extraction_prompt(form_type)
     response = _get_client().chat.completions.create(
@@ -259,39 +306,75 @@ def extract_fields(image_path: str, form_type: FormType) -> dict:
 
 
 def process_image(image_path: str, form_types: list) -> dict:
+    """
+    Main entry point: Process image with two-layer validation.
+    
+    Returns:
+        {
+            "form_code": str,
+            "form_type_id": int,
+            "data": dict,              # corrected values
+            "raw_data": dict,          # original OCR output
+            "corrections": dict,       # fuzzy matching corrections
+            "validation_flags": dict,  # lookup validation results
+            "confidence": float,
+            "error": str or None
+        }
+    """
     try:
+        # Step 1: Identify form type
         id_result = identify_form(image_path)
         form_code = id_result.get("form_code", "UNKNOWN")
         confidence = id_result.get("confidence", 0.0)
 
         matched_form = next((ft for ft in form_types if ft.code == form_code), None)
         if not matched_form:
-            return {"form_code": form_code, "form_type_id": None, "data": {},
-                    "confidence": confidence, "error": f"Could not match form code '{form_code}'."}
+            return {
+                "form_code": form_code,
+                "form_type_id": None,
+                "data": {},
+                "confidence": confidence,
+                "error": f"Could not match form code '{form_code}'."
+            }
 
+        # Step 2: Extract fields
         extracted = extract_fields(image_path, matched_form)
 
-        # Fix date year
+        # Step 3: Fix date year
         for date_key in ("date", "print_date"):
             if extracted.get(date_key):
                 extracted[date_key] = _fix_date_year(str(extracted[date_key]))
 
-        # Fuzzy-correct lookup fields
+        # Step 4: Layer 1 - Fuzzy-correct lookup fields
         corrected, corrections = _fuzzy_correct(extracted)
+
+        # Step 5: Layer 2 - Validate against lookup tables
+        validation_flags = _validate_against_lookup(corrected)
 
         return {
             "form_code": form_code,
             "form_type_id": matched_form.id,
-            "data": corrected,
+            "data": corrected,              # corrected values
             "raw_data": extracted,          # original before correction
             "corrections": corrections,     # audit log for UI display
+            "validation_flags": validation_flags,  # NEW: lookup validation flags
             "confidence": confidence,
             "error": None,
         }
 
     except json.JSONDecodeError as e:
-        return {"form_code": None, "form_type_id": None, "data": {}, "confidence": 0.0,
-                "error": f"JSON parse error: {str(e)}"}
+        return {
+            "form_code": None,
+            "form_type_id": None,
+            "data": {},
+            "confidence": 0.0,
+            "error": f"JSON parse error: {str(e)}"
+        }
     except Exception as e:
-        return {"form_code": None, "form_type_id": None, "data": {}, "confidence": 0.0,
-                "error": str(e)}
+        return {
+            "form_code": None,
+            "form_type_id": None,
+            "data": {},
+            "confidence": 0.0,
+            "error": str(e)
+        }
