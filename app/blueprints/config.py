@@ -24,18 +24,35 @@ def get_fields(form_type_id):
 @config_bp.route("/save/<int:form_type_id>", methods=["POST"])
 @login_required
 def save_config(form_type_id):
-    """Save field configuration changes."""
-    FormType.query.get_or_404(form_type_id)
+    """Save field configuration changes - matches field_config/index.html JavaScript."""
+    ft = FormType.query.get_or_404(form_type_id)
     payload = request.get_json()
-    updates = payload.get("fields", {})  # {field_id: enabled}
-
+    
+    if not payload:
+        return jsonify({"success": False, "error": "No data received"}), 400
+    
+    updates = payload.get("fields", {})  # {field_id_str: enabled_bool}
+    
+    if not updates:
+        return jsonify({"success": False, "error": "No fields in payload"}), 400
+    
+    updated_count = 0
+    
     for field_id_str, enabled in updates.items():
-        fc = FieldConfig.query.get(int(field_id_str))
-        if fc and fc.form_type_id == form_type_id:
-            fc.enabled = enabled
-
+        try:
+            field_id = int(field_id_str)
+            fc = FieldConfig.query.get(field_id)
+            
+            # Verify field belongs to this form type
+            if fc and fc.form_type_id == form_type_id:
+                fc.enabled = bool(enabled)
+                updated_count += 1
+        except (ValueError, TypeError) as e:
+            # Skip invalid field IDs
+            continue
+    
     db.session.commit()
-    return jsonify({"success": True, "updated": len(updates)})
+    return jsonify({"success": True, "updated": updated_count})
 
 
 @config_bp.route("/fields/<int:form_type_id>", methods=["POST"])

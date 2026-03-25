@@ -249,6 +249,9 @@ async function saveConfig(ftId) {
     updates[cb.dataset.fieldId] = cb.checked;
   });
 
+  console.log('Saving form type:', ftId);
+  console.log('Updates payload:', updates);
+
   btn.disabled = true;
   btn.textContent = 'Saving…';
 
@@ -258,7 +261,18 @@ async function saveConfig(ftId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields: updates }),
     });
+    
+    console.log('Response status:', res.status);
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('Server error:', errorText);
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    
     const data = await res.json();
+    console.log('Response data:', data);
+    
     if (data.success) {
       btn.textContent = 'Saved';
       btn.style.background = '#059669';
@@ -277,6 +291,7 @@ async function saveConfig(ftId) {
       throw new Error(data.error || 'Save failed');
     }
   } catch (err) {
+    console.error('Save error:', err);
     btn.disabled = false;
     btn.textContent = 'Retry';
     btn.style.background = '#DC2626';

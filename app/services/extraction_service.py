@@ -2,6 +2,7 @@
 extraction_service.py
 Handles image-to-structured-data extraction via OpenAI Vision API (GPT-4o).
 Includes fuzzy matching for job_name, printed_film, supplier fields.
+Enhanced bottom-section field detection for waste fields.
 """
 import os
 import json
@@ -87,23 +88,66 @@ Return ONLY a valid JSON object with these exact keys (use null for any field no
 {field_list}
 }}
 
-Rules:
-- Extract exactly what is written, do not calculate or infer values
-- For numbers, return numeric values without units
-- For dates: look for a field labeled 'Date' or 'Print Date'.
-  The date is typically handwritten in DD/MM/YYYY or DD-MM-YYYY format.
-  Return it exactly as written (e.g. "18/02/{current_year}").
-  If the year part looks wrong or unreadable, replace it with {current_year}.
-- For "material": find the cell labeled "Printed Film" in the mid-form row alongside Web Size/Web Mic.
-  It contains a film type such as "PE 2 layer white/grey", "PE Milky", "BOPP", "PP", etc.
-- For "plain_waste": find the cell labeled "Plain Waste" in the BOTTOM summary section. Return as a number.
-- For "printed_waste": find "Printed Waste" in the BOTTOM summary section. Return as a number.
-  A dash or blank means 0.
-- For "plain_roll_wt": find "Plain G.wt" in the bottom summary section. Return as a number.
-- For "net_wt": find "Plain Net Wt." in the bottom summary section. Return as a number.
-- For "core_wt": find "Core Wt. A" in the mid-form table. Return as a number.
-- For illegible handwriting, use null
-- Do not add any explanation outside the JSON"""
+CRITICAL FIELD LOCATION INSTRUCTIONS:
+
+1. DATE FIELD:
+   - Look for a field labeled 'Date' or 'Print Date' near the top of the form
+   - Date is typically handwritten in DD/MM/YYYY or DD-MM-YYYY format
+   - Return exactly as written (e.g. "18/02/{current_year}")
+   - If the year part looks wrong or unreadable, replace it with {current_year}
+
+2. MATERIAL (Printed Film):
+   - Find the cell labeled "Printed Film" in the mid-form section (alongside Web Size/Web Mic)
+   - It contains a film type such as "PE 2 layer white/grey", "PE Milky", "BOPP", "PP", etc.
+   - This is in the MIDDLE section of the form, NOT at the bottom
+
+3. BOTTOM SECTION WASTE FIELDS (VERY IMPORTANT):
+   The BOTTOM section of the form has a summary table with these fields.
+   Look carefully at the BOTTOM-LEFT area of the form:
+   
+   - "plain_waste": Find "Plain Waste" label in the BOTTOM summary section
+     * This is typically in the lower-left area
+     * Often has a value like 0.500, 1.20, etc.
+     * A dash (-) or blank means 0
+     * Return as NUMBER (e.g., 0.5 not "0.500")
+   
+   - "roll_waste": Find "Roll Waste" label in the BOTTOM summary section
+     * Directly next to or below Plain Waste
+     * May be empty or have a dash (return 0 if blank/dash)
+     * Return as NUMBER
+   
+   - "printed_waste": Find "Printed Waste" label in the BOTTOM summary section
+     * Near Roll Waste in the bottom area
+     * May be empty or have a dash (return 0 if blank/dash)
+     * Return as NUMBER
+
+4. BOTTOM SECTION WEIGHT FIELDS:
+   Also in the BOTTOM summary section:
+   
+   - "plain_roll_wt": Find "Plain G.wt" or "Plain Gross Wt" in the bottom summary
+     * Return as NUMBER
+   
+   - "net_wt": Find "Plain Net Wt." or "Printed Net Wt." in the bottom summary section
+     * This is the NET weight after removing core weight
+     * Return as NUMBER
+   
+   - "core_wt": Find "Core Wt. A" in the mid-form table OR "Core Wt. A" in bottom section
+     * Return as NUMBER
+
+5. OTHER NUMERIC FIELDS:
+   For all other numeric fields (order_qty, speed, ink_gsm, etc.):
+   - Return as NUMBER without units
+   - If illegible or blank, use null
+
+6. TEXT FIELDS:
+   For text fields (job_name, job_code, operator, etc.):
+   - Extract exactly what is written
+   - If illegible, use null
+   - Do not calculate or infer values
+
+Remember: The waste fields (plain_waste, roll_waste, printed_waste) and Plain Net Wt. (net_wt) 
+are in the BOTTOM summary section of the form, NOT in the middle table section.
+Look carefully at the bottom-left area of the form for these values."""
 
 
 def _encode_image(image_path: str):
