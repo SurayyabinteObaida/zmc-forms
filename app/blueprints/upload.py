@@ -6,6 +6,7 @@ from werkzeug.utils import secure_filename
 from app import db
 from app.models import FormType, Submission, ExtractedRecord
 from app.services.extraction_service import process_image
+from app.blueprints.auth import login_required
 
 upload_bp = Blueprint("upload", __name__)
 
@@ -17,11 +18,13 @@ def _allowed_file(filename):
 
 
 @upload_bp.route("/", methods=["GET"])
+@login_required
 def index():
     return render_template("upload/index.html")
 
 
 @upload_bp.route("/process", methods=["POST"])
+@login_required
 def process():
     files = request.files.getlist("files")
     if not files or all(f.filename == "" for f in files):

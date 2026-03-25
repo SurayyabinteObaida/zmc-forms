@@ -7,6 +7,7 @@ from app.services.excel_service import (generate_batch_excel,
     get_column_config_for_ui, save_export_config)
 from app.models import (FormType, ExtractedRecord, Submission,
                          FlexoPrintingRecord, GravurePrintingRecord)
+from app.blueprints.auth import login_required
 
 verify_bp = Blueprint("verify", __name__)
 
@@ -17,6 +18,7 @@ FORM_MODEL_MAP = {
 
 
 @verify_bp.route("/<int:submission_id>")
+@login_required
 def index(submission_id):
     submission = Submission.query.get_or_404(submission_id)
     records = ExtractedRecord.query.filter_by(submission_id=submission_id).all()
@@ -26,11 +28,21 @@ def index(submission_id):
         form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
         raw_data = json.loads(rec.raw_extraction or "{}")
         enabled_fields = form_type.enabled_fields() if form_type else []
+        
+        # Extract corrections if available
+        corrections = {}
+        if hasattr(rec, 'corrections_json'):
+            try:
+                corrections = json.loads(rec.corrections_json or "{}")
+            except:
+                pass
+        
         enriched.append({
             "record": rec,
             "form_type": form_type,
             "raw_data": raw_data,
             "enabled_fields": enabled_fields,
+            "corrections": corrections,
         })
 
     form_types_all = FormType.query.all()
@@ -38,6 +50,7 @@ def index(submission_id):
 
 
 @verify_bp.route("/record/<int:record_id>", methods=["GET"])
+@login_required
 def get_record(record_id):
     rec = ExtractedRecord.query.get_or_404(record_id)
     form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
@@ -59,6 +72,7 @@ def get_record(record_id):
 
 
 @verify_bp.route("/save/<int:record_id>", methods=["POST"])
+@login_required
 def save_record(record_id):
     rec = ExtractedRecord.query.get_or_404(record_id)
     form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
@@ -91,6 +105,7 @@ def save_record(record_id):
 
 
 @verify_bp.route("/save-batch/<int:submission_id>", methods=["POST"])
+@login_required
 def save_batch(submission_id):
     submission = Submission.query.get_or_404(submission_id)
     payload = request.get_json()
@@ -136,6 +151,7 @@ def save_batch(submission_id):
 
 
 @verify_bp.route("/update-form-type/<int:record_id>", methods=["POST"])
+@login_required
 def update_form_type(record_id):
     rec = ExtractedRecord.query.get_or_404(record_id)
     payload = request.get_json()
@@ -146,6 +162,7 @@ def update_form_type(record_id):
 
 
 @verify_bp.route("/export-batch/<int:submission_id>", methods=["GET"])
+@login_required
 def export_batch(submission_id):
     submission = Submission.query.get_or_404(submission_id)
     record_id = request.args.get("record_id", type=int)
@@ -183,11 +200,13 @@ def export_batch(submission_id):
         return jsonify({"error": str(e)}), 500
 
 @verify_bp.route("/export-columns", methods=["GET"])
+@login_required
 def get_export_columns():
     return jsonify(get_column_config_for_ui())
 
 
 @verify_bp.route("/export-columns", methods=["POST"])
+@login_required
 def save_export_columns():
     payload = request.get_json()
     if not isinstance(payload, dict):

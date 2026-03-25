@@ -15,6 +15,10 @@ def create_app():
 
     # ── Config ───────────────────────────────────────────────────────────────
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["PERMANENT_SESSION_LIFETIME"] = 3600 * 8  # 8 hours
+    
     db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/zmc_forms")
     # Render uses postgres:// but SQLAlchemy needs postgresql://
     if db_url.startswith("postgres://"):
@@ -30,12 +34,14 @@ def create_app():
     migrate.init_app(app, db)
 
     # ── Blueprints ────────────────────────────────────────────────────────────
+    from app.blueprints.auth import auth_bp
     from app.blueprints.main import main_bp
     from app.blueprints.upload import upload_bp
     from app.blueprints.verify import verify_bp
     from app.blueprints.config import config_bp
     from app.blueprints.export import export_bp
 
+    app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(upload_bp, url_prefix="/upload")
     app.register_blueprint(verify_bp, url_prefix="/verify")

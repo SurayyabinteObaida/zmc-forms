@@ -2,11 +2,13 @@ from flask import Blueprint, send_file, jsonify
 import io
 from app.models import FormType, ExtractedRecord
 from app.services.excel_service import generate_excel
+from app.blueprints.auth import login_required
 
 export_bp = Blueprint("export", __name__)
 
 
 @export_bp.route("/excel/<int:form_type_id>")
+@login_required
 def export_excel(form_type_id):
     ft = FormType.query.get_or_404(form_type_id)
     records = (
