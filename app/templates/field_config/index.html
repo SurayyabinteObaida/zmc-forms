@@ -65,12 +65,14 @@
     padding: 2px 7px;
     border-radius: 4px;
 }
+
 .type-tag {
     font-size: .72rem;
     color: #64748B;
     background: #F1F5F9;
-    padding: 2px 8px;
+    padding: 4px 10px;
     border-radius: 4px;
+    display: inline-block;
 }
 
 .toggle-switch {
@@ -108,6 +110,73 @@
     text-decoration: underline;
 }
 .link-btn:hover { color: #1a4a76; }
+
+/* Inline editing */
+.editable-label {
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all .15s;
+    border: 1px solid transparent;
+    display: inline-block;
+}
+.editable-label:hover {
+    background: #EFF6FF;
+    border-color: #BFDBFE;
+}
+.editable-label:hover::after {
+    content: " ✎";
+    color: #3B82F6;
+    font-size: .7rem;
+    margin-left: 4px;
+}
+.label-input {
+    border: 2px solid var(--zmc-blue);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: .83rem;
+    width: 100%;
+    max-width: 300px;
+}
+.label-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(46,117,182,.1);
+}
+
+.type-tag {
+    cursor: pointer;
+    transition: all .15s;
+    border: 1px solid transparent;
+}
+.type-tag:hover {
+    background: #DBEAFE;
+    border-color: #93C5FD;
+    transform: scale(1.05);
+}
+.type-tag:hover::after {
+    content: " ▼";
+    color: #3B82F6;
+    font-size: .6rem;
+    margin-left: 2px;
+}
+
+.type-dropdown {
+    border: 2px solid var(--zmc-blue);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: .72rem;
+    background: white;
+    cursor: pointer;
+}
+.type-dropdown:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(46,117,182,.1);
+}
+
+.modified {
+    background: #FFF3CD !important;
+    border-left: 3px solid #F59E0B !important;
+}
 </style>
 {% endblock %}
 
@@ -117,7 +186,7 @@
     <h4 style="font-weight:700;">Field Configuration</h4>
     <p class="text-muted mb-0" style="font-size:.875rem;">
       Control which fields are extracted and stored for each form type.
-      Disabled fields are ignored during extraction and export.
+      Click on labels or types to edit them. Disabled fields are ignored during extraction and export.
     </p>
   </div>
 </div>
@@ -151,7 +220,7 @@
         <div class="p-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
           <div>
             <h6 class="mb-0" style="font-weight:600;">{{ ft.name }}</h6>
-            <small class="text-muted">{{ ft.code }} &middot; {{ ft.field_configs | length }} total fields</small>
+            <small class="text-muted">{{ ft.code }} &middot; {{ ft.field_configs | length }} total fields · Click labels/types to edit</small>
           </div>
           <div class="d-flex gap-2 align-items-center flex-wrap">
             <div class="bulk-actions">
@@ -161,7 +230,7 @@
             </div>
             <button class="btn btn-sm" style="background:var(--zmc-blue);color:#fff;"
                     onclick="saveConfig({{ ft.id }})" id="save-btn-{{ ft.id }}">
-              Save Changes
+              <i class="bi bi-floppy me-1"></i>Save Changes
             </button>
           </div>
         </div>
@@ -173,13 +242,13 @@
               <tr>
                 <th style="width:44px;">ON/OFF</th>
                 <th>FIELD KEY</th>
-                <th>DISPLAY LABEL</th>
-                <th>TYPE</th>
+                <th style="width:35%;">DISPLAY LABEL</th>
+                <th style="width:120px;">TYPE</th>
               </tr>
             </thead>
             <tbody>
               {% for field in ft.field_configs %}
-              <tr id="field-row-{{ field.id }}">
+              <tr id="field-row-{{ field.id }}" data-field-id="{{ field.id }}">
                 <td>
                   <label class="toggle-switch">
                     <input type="checkbox"
@@ -187,16 +256,50 @@
                            data-field-id="{{ field.id }}"
                            data-ft-id="{{ ft.id }}"
                            {% if field.enabled %}checked{% endif %}
-                           onchange="onToggleChange({{ ft.id }})">
+                           onchange="onToggleChange({{ ft.id }}, {{ field.id }})">
                     <span class="toggle-slider"></span>
                   </label>
                 </td>
                 <td><span class="field-key-tag">{{ field.key }}</span></td>
-                <td style="font-weight:{% if field.enabled %}600{% else %}400{% endif %};color:{% if field.enabled %}#1e2d3d{% else %}#94A3B8{% endif %};"
-                    id="field-label-{{ field.id }}">
-                  {{ field.label }}
+                <td>
+                  <span class="editable-label" 
+                        id="label-display-{{ field.id }}"
+                        data-field-id="{{ field.id }}"
+                        data-original="{{ field.label }}"
+                        onclick="editLabel({{ field.id }})"
+                        style="font-weight:{% if field.enabled %}600{% else %}400{% endif %};color:{% if field.enabled %}#1e2d3d{% else %}#94A3B8{% endif %};">
+                    {{ field.label }}
+                  </span>
+                  <input type="text" 
+                         class="label-input" 
+                         id="label-input-{{ field.id }}"
+                         value="{{ field.label }}"
+                         data-field-id="{{ field.id }}"
+                         data-original="{{ field.label }}"
+                         onblur="saveLabel({{ field.id }})"
+                         onkeypress="if(event.key==='Enter') saveLabel({{ field.id }})"
+                         style="display:none;">
                 </td>
-                <td><span class="type-tag">{{ field.field_type }}</span></td>
+                <td>
+                  <span class="type-tag" 
+                        id="type-display-{{ field.id }}"
+                        data-field-id="{{ field.id }}"
+                        data-original="{{ field.field_type }}"
+                        onclick="editType({{ field.id }})">
+                    {{ field.field_type }}
+                  </span>
+                  <select class="type-dropdown"
+                          id="type-select-{{ field.id }}"
+                          data-field-id="{{ field.id }}"
+                          data-original="{{ field.field_type }}"
+                          onchange="saveType({{ field.id }})"
+                          onblur="cancelTypeEdit({{ field.id }})"
+                          style="display:none;">
+                    <option value="text" {% if field.field_type == 'text' %}selected{% endif %}>text</option>
+                    <option value="number" {% if field.field_type == 'number' %}selected{% endif %}>number</option>
+                    <option value="date" {% if field.field_type == 'date' %}selected{% endif %}>date</option>
+                  </select>
+                </td>
               </tr>
               {% endfor %}
             </tbody>
@@ -212,6 +315,9 @@
 
 {% block scripts %}
 <script>
+// Track modifications
+const modifications = {};
+
 function selectFormType(id) {
   document.querySelectorAll('.form-type-card').forEach(c => c.classList.remove('active'));
   document.querySelectorAll('.ft-panel').forEach(p => p.style.display = 'none');
@@ -219,72 +325,198 @@ function selectFormType(id) {
   document.getElementById('ft-panel-' + id).style.display = 'block';
 }
 
-function onToggleChange(ftId) {
-  // Dim/undim label based on toggle state
-  const table = document.getElementById('field-table-' + ftId);
-  table.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-    const fieldId = cb.dataset.fieldId;
-    const lbl = document.getElementById('field-label-' + fieldId);
-    if (lbl) {
-      lbl.style.fontWeight = cb.checked ? '600' : '400';
-      lbl.style.color = cb.checked ? '#1e2d3d' : '#94A3B8';
-    }
-  });
+function onToggleChange(ftId, fieldId) {
+  const cb = document.getElementById('toggle-' + fieldId);
+  const lbl = document.getElementById('label-display-' + fieldId);
+  
+  if (lbl) {
+    lbl.style.fontWeight = cb.checked ? '600' : '400';
+    lbl.style.color = cb.checked ? '#1e2d3d' : '#94A3B8';
+  }
+  
+  // Mark as modified
+  if (!modifications[ftId]) modifications[ftId] = {};
+  if (!modifications[ftId][fieldId]) modifications[ftId][fieldId] = {};
+  modifications[ftId][fieldId].enabled = cb.checked;
+  
+  markRowModified(fieldId);
 }
 
 function bulkToggle(ftId, state) {
   const table = document.getElementById('field-table-' + ftId);
   table.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    const fieldId = cb.dataset.fieldId;
     cb.checked = state;
+    onToggleChange(ftId, fieldId);
   });
-  onToggleChange(ftId);
+}
+
+// Label editing
+function editLabel(fieldId) {
+  const display = document.getElementById('label-display-' + fieldId);
+  const input = document.getElementById('label-input-' + fieldId);
+  
+  display.style.display = 'none';
+  input.style.display = 'block';
+  input.focus();
+  input.select();
+}
+
+function saveLabel(fieldId) {
+  const display = document.getElementById('label-display-' + fieldId);
+  const input = document.getElementById('label-input-' + fieldId);
+  const original = input.dataset.original;
+  const newValue = input.value.trim();
+  
+  if (!newValue) {
+    input.value = original;
+  }
+  
+  display.textContent = input.value;
+  display.style.display = 'inline';
+  input.style.display = 'none';
+  
+  // Track modification
+  const row = document.getElementById('field-row-' + fieldId);
+  const ftId = row.closest('.ft-panel').id.replace('ft-panel-', '');
+  
+  if (!modifications[ftId]) modifications[ftId] = {};
+  if (!modifications[ftId][fieldId]) modifications[ftId][fieldId] = {};
+  
+  if (input.value !== original) {
+    modifications[ftId][fieldId].label = input.value;
+    markRowModified(fieldId);
+  } else {
+    delete modifications[ftId][fieldId].label;
+    if (Object.keys(modifications[ftId][fieldId]).length === 0) {
+      unmarkRowModified(fieldId);
+    }
+  }
+}
+
+// Type editing
+function editType(fieldId) {
+  const display = document.getElementById('type-display-' + fieldId);
+  const select = document.getElementById('type-select-' + fieldId);
+  
+  display.style.display = 'none';
+  select.style.display = 'inline-block';
+  select.focus();
+}
+
+function saveType(fieldId) {
+  const display = document.getElementById('type-display-' + fieldId);
+  const select = document.getElementById('type-select-' + fieldId);
+  const original = select.dataset.original;
+  const newValue = select.value;
+  
+  display.textContent = newValue;
+  display.style.display = 'inline-block';
+  select.style.display = 'none';
+  
+  // Track modification
+  const row = document.getElementById('field-row-' + fieldId);
+  const ftId = row.closest('.ft-panel').id.replace('ft-panel-', '');
+  
+  if (!modifications[ftId]) modifications[ftId] = {};
+  if (!modifications[ftId][fieldId]) modifications[ftId][fieldId] = {};
+  
+  if (newValue !== original) {
+    modifications[ftId][fieldId].field_type = newValue;
+    markRowModified(fieldId);
+  } else {
+    delete modifications[ftId][fieldId].field_type;
+    if (Object.keys(modifications[ftId][fieldId]).length === 0) {
+      unmarkRowModified(fieldId);
+    }
+  }
+}
+
+function cancelTypeEdit(fieldId) {
+  const display = document.getElementById('type-display-' + fieldId);
+  const select = document.getElementById('type-select-' + fieldId);
+  
+  display.style.display = 'inline-block';
+  select.style.display = 'none';
+}
+
+function markRowModified(fieldId) {
+  const row = document.getElementById('field-row-' + fieldId);
+  row.classList.add('modified');
+}
+
+function unmarkRowModified(fieldId) {
+  const row = document.getElementById('field-row-' + fieldId);
+  row.classList.remove('modified');
 }
 
 async function saveConfig(ftId) {
   const btn = document.getElementById('save-btn-' + ftId);
   const table = document.getElementById('field-table-' + ftId);
 
-  const updates = {};
+  // Collect all field states (enabled/disabled)
+  const fields = [];
   table.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-    updates[cb.dataset.fieldId] = cb.checked;
+    const fieldId = parseInt(cb.dataset.fieldId);
+    const labelInput = document.getElementById('label-input-' + fieldId);
+    const typeSelect = document.getElementById('type-select-' + fieldId);
+    
+    const fieldData = {
+      id: fieldId,
+      enabled: cb.checked,
+      label: labelInput.value,
+      field_type: typeSelect.value
+    };
+    
+    fields.push(fieldData);
   });
 
-  console.log('Saving form type:', ftId);
-  console.log('Updates payload:', updates);
-
   btn.disabled = true;
-  btn.textContent = 'Saving…';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
 
   try {
-    const res = await fetch(`/config/save/${ftId}`, {
+    const res = await fetch(`/config/fields/${ftId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields: updates }),
+      body: JSON.stringify({ fields: fields }),
     });
-    
-    console.log('Response status:', res.status);
     
     if (!res.ok) {
       const errorText = await res.text();
-      console.error('Server error:', errorText);
       throw new Error(`HTTP ${res.status}: ${errorText}`);
     }
     
     const data = await res.json();
-    console.log('Response data:', data);
     
     if (data.success) {
-      btn.textContent = 'Saved';
+      btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Saved';
       btn.style.background = '#059669';
+      
+      // Clear modifications tracking
+      modifications[ftId] = {};
+      
+      // Remove modified highlights
+      table.querySelectorAll('.modified').forEach(row => {
+        row.classList.remove('modified');
+      });
+      
+      // Update originals
+      fields.forEach(f => {
+        const labelInput = document.getElementById('label-input-' + f.id);
+        const typeSelect = document.getElementById('type-select-' + f.id);
+        labelInput.dataset.original = f.label;
+        typeSelect.dataset.original = f.field_type;
+      });
+      
       setTimeout(() => {
         btn.disabled = false;
-        btn.textContent = 'Save Changes';
+        btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Save Changes';
         btn.style.background = '';
       }, 1500);
 
-      // Update the meta count in the sidebar card
-      const enabledCount = Object.values(updates).filter(Boolean).length;
-      const total = Object.keys(updates).length;
+      // Update the meta count
+      const enabledCount = fields.filter(f => f.enabled).length;
+      const total = fields.length;
       const meta = document.querySelector(`#ft-card-${ftId} .form-meta`);
       if (meta) meta.textContent = `${enabledCount} / ${total} fields active`;
     } else {
@@ -293,7 +525,7 @@ async function saveConfig(ftId) {
   } catch (err) {
     console.error('Save error:', err);
     btn.disabled = false;
-    btn.textContent = 'Retry';
+    btn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Retry';
     btn.style.background = '#DC2626';
     alert('Error saving: ' + err.message);
   }
