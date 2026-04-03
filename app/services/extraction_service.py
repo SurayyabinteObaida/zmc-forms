@@ -132,19 +132,21 @@ CRITICAL FIELD LOCATION INSTRUCTIONS:
      * Return as NUMBER
    - "plain_bal": labeled "Plain Bal" — plain balance weight
      * Return as NUMBER
-   - "net_wt": labeled "Plain Net Wt." — this is in the BOTTOM-LEFT, last row before Remarks
-     * This is DISTINCT from Printed Net Wt.
-     * Typical value is smaller than Plain G.wt (e.g. if Plain G.wt=175.80, Plain Net Wt=77.80)
+   - "net_wt": labeled "Plain Net Wt." — LAST row of the LEFT column, just above Remarks
+     * This is DISTINCT from Printed Net Wt. (which is in the middle column)
+     * Plain Net Wt = Plain G.wt minus Plain Bal minus Core Wt. A (use this to verify your reading)
+     * Example: if Plain G.wt=175.80, Plain Bal=98.00, Core Wt. A=0, then Plain Net Wt=77.80
      * Return as NUMBER
 
-   MIDDLE COLUMN (Printed side):
-   - "printed_reel_wt": labeled "Printed Net Wt." — in the BOTTOM-MIDDLE section
-     * This is DISTINCT from Plain Net Wt.
-     * Typical value is close to but less than Printed G.wt
+   MIDDLE COLUMN (Printed side) — rows top to bottom:
+   Row 1 - "gross_wt": labeled "Printed G.wt" — FIRST row, gross weight of printed rolls
      * Return as NUMBER
-   - "gross_wt": labeled "Printed G.wt" — gross weight of printed rolls
+   Row 2 - "core_wt": labeled "Core Wt. B" — SECOND row
      * Return as NUMBER
-   - "core_wt": labeled "Core Wt. B" in the bottom section
+   Row 3 - "printed_reel_wt": labeled "Printed Net Wt." — THIRD row, below Core Wt. B
+     * This is NOT the same as Printed G.wt (Row 1)
+     * Printed Net Wt = Printed G.wt minus Core Wt. B (use this to verify your reading)
+     * Example: if Printed G.wt=91.40 and Core Wt. B=2.30, Printed Net Wt should be ~89.10
      * Return as NUMBER
 
 5. BOTTOM SECTION WASTE FIELDS:
@@ -247,9 +249,11 @@ def _fuzzy_correct(extracted: dict) -> tuple[dict, dict]:
         if not candidates:
             continue
 
+        # Use partial_ratio for short strings (<=6 chars) to handle extra/missing chars
+        scorer = fuzz.partial_ratio if len(raw) <= 6 else fuzz.token_sort_ratio
         match, score, _ = process.extractOne(
             raw.upper(), [c.upper() for c in candidates],
-            scorer=fuzz.token_sort_ratio
+            scorer=scorer
         )
         # Map back to original-cased candidate
         best = candidates[[c.upper() for c in candidates].index(match)]
