@@ -117,53 +117,71 @@ CRITICAL FIELD LOCATION INSTRUCTIONS:
    - It contains a film type such as "PE 2 layer white/grey", "PE Milky", "BOPP", "PP", etc.
    - This is in the MIDDLE section of the form, NOT at the bottom
 
-3. BOTTOM SECTION WASTE FIELDS (VERY IMPORTANT):
-   The BOTTOM section of the form has a summary table with these fields.
-   Look carefully at the BOTTOM-LEFT area of the form:
-   
-   - "plain_waste": Find "Plain Waste" label in the BOTTOM summary section
-     * This is typically in the lower-left area
-     * Often has a value like 0.500, 1.20, etc.
-     * A dash (-) or blank means 0
-     * Return as NUMBER (e.g., 0.5 not "0.500")
-   
-   - "roll_waste": Find "Roll Waste" label in the BOTTOM summary section
-     * Directly next to or below Plain Waste
-     * May be empty or have a dash (return 0 if blank/dash)
+3. OPERATOR:
+   - The form has an "Operator" column in the middle table where names repeat across rows
+   - Also has an "Operator" signature line at the bottom of the form
+   - Extract the unique operator name only ONCE — do NOT repeat or concatenate duplicate names
+   - If two different operators appear (e.g. "Rizwan" and "Junaid"), return them as "Rizwan/Junaid"
+   - If the same name appears multiple times, return it only once
+
+4. BOTTOM SECTION WEIGHT FIELDS (VERY IMPORTANT):
+   The bottom summary section has a 3-column layout. Read labels carefully:
+
+   LEFT COLUMN (Plain side):
+   - "plain_roll_wt": labeled "Plain G.wt" — the gross weight of plain rolls
      * Return as NUMBER
-   
-   - "printed_waste": Find "Printed Waste" label in the BOTTOM summary section
-     * Near Roll Waste in the bottom area
-     * May be empty or have a dash (return 0 if blank/dash)
+   - "plain_bal": labeled "Plain Bal" — plain balance weight
+     * Return as NUMBER
+   - "net_wt": labeled "Plain Net Wt." — this is in the BOTTOM-LEFT, last row before Remarks
+     * This is DISTINCT from Printed Net Wt.
+     * Typical value is smaller than Plain G.wt (e.g. if Plain G.wt=175.80, Plain Net Wt=77.80)
      * Return as NUMBER
 
-4. BOTTOM SECTION WEIGHT FIELDS:
-   Also in the BOTTOM summary section:
-   
-   - "plain_roll_wt": Find "Plain G.wt" or "Plain Gross Wt" in the bottom summary
+   MIDDLE COLUMN (Printed side):
+   - "printed_reel_wt": labeled "Printed Net Wt." — in the BOTTOM-MIDDLE section
+     * This is DISTINCT from Plain Net Wt.
+     * Typical value is close to but less than Printed G.wt
      * Return as NUMBER
-   
-   - "net_wt": Find "Plain Net Wt." or "Printed Net Wt." in the bottom summary section
-     * This is the NET weight after removing core weight
+   - "gross_wt": labeled "Printed G.wt" — gross weight of printed rolls
      * Return as NUMBER
-   
-   - "core_wt": Find "Core Wt. A" in the mid-form table OR "Core Wt. A" in bottom section
+   - "core_wt": labeled "Core Wt. B" in the bottom section
      * Return as NUMBER
 
-5. OTHER NUMERIC FIELDS:
+5. BOTTOM SECTION WASTE FIELDS:
+   RIGHT COLUMN of the bottom summary section:
+
+   - "plain_waste": labeled "Plain Waste" — top of the right column
+     * A dash (-) or blank means null, NOT zero
+     * Return as NUMBER or null
+   
+   - "roll_waste": labeled "Roll Waste"
+     * A dash (-) or blank means null
+     * Return as NUMBER or null
+   
+   - "printed_waste": labeled "Printed Waste"
+     * A dash (-) or blank means null
+     * Return as NUMBER or null
+
+   - "total_waste": labeled "Total Waste" — last row of the right column
+     * This should equal the sum of all individual waste values
+     * A dash (-) or blank means null
+     * Return as NUMBER or null
+
+6. OTHER NUMERIC FIELDS:
    For all other numeric fields (order_qty, speed, ink_gsm, etc.):
    - Return as NUMBER without units
    - If illegible or blank, use null
 
-6. TEXT FIELDS:
-   For text fields (job_name, job_code, operator, etc.):
+7. TEXT FIELDS:
+   For text fields (job_name, job_code, etc.):
    - Extract exactly what is written
    - If illegible, use null
    - Do not calculate or infer values
 
-Remember: The waste fields (plain_waste, roll_waste, printed_waste) and Plain Net Wt. (net_wt) 
-are in the BOTTOM summary section of the form, NOT in the middle table section.
-Look carefully at the bottom-left area of the form for these values."""
+REMEMBER:
+- "Plain Net Wt." (net_wt) and "Printed Net Wt." (printed_reel_wt) are TWO DIFFERENT fields
+- Plain Net Wt. is in the BOTTOM-LEFT. Printed Net Wt. is in the BOTTOM-MIDDLE.
+- A dash (-) in any field means null, not zero."""
 
 
 def _encode_image(image_path: str):
@@ -270,6 +288,41 @@ def _validate_against_lookup(data: dict) -> dict:
     return flags
 
 
+def _validate_waste_totals(data: dict) -> dict:
+    """
+    Post-processing: cross-check total_waste against sum of individual wastes.
+    If total_waste is present but doesn't match the sum, recompute from parts.
+    Handles common handwriting misread (e.g. 0.60 read as 6.6).
+    """
+    waste_fields = ["plain_waste", "roll_waste", "printed_waste", "setting_waste"]
+    parts = [data.get(f) for f in waste_fields]
+    numeric_parts = [float(v) for v in parts if v is not None]
+
+    if not numeric_parts:
+        return data
+
+    computed_total = round(sum(numeric_parts), 3)
+    extracted_total = data.get("total_waste")
+
+    if extracted_total is None:
+        data["total_waste"] = computed_total
+        return data
+
+    try:
+        extracted_total = float(extracted_total)
+    except (TypeError, ValueError):
+        data["total_waste"] = computed_total
+        return data
+
+    # Allow 5% tolerance for rounding
+    tolerance = max(0.05, computed_total * 0.05)
+    if abs(extracted_total - computed_total) > tolerance:
+        # Misread detected — replace with computed value
+        data["total_waste"] = computed_total
+
+    return data
+
+
 def identify_form(image_path: str) -> dict:
     """Identify form type from image."""
     data, media_type = _encode_image(image_path)
@@ -350,6 +403,9 @@ def process_image(image_path: str, form_types: list) -> dict:
 
         # Step 5: Layer 2 - Validate against lookup tables
         validation_flags = _validate_against_lookup(corrected)
+
+        # Step 6: Cross-check waste totals
+        corrected = _validate_waste_totals(corrected)
 
         return {
             "form_code": form_code,
