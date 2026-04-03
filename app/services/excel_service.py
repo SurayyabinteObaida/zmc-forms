@@ -15,38 +15,37 @@ from openpyxl.utils import get_column_letter
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "export_config.json")
 
 # Master column definition: (display_label, data_key, width, is_formula)
-# data_key matches EXACTLY the field keys in FlexoPrintingRecord / FieldConfig
 ALL_COLUMNS = [
-    ("S. NO",             "serial",        6,  False),
-    ("Job Code",          "job_code",      14, False),
-    ("PRINT DATE",        "date",          12, False),
-    ("Job Name",          "job_name",      22, False),
-    ("BAG SIZE",          "bag_size",      14, False),
-    ("PRINTED FILM",      "material",      18, False),   # field key = material
-    ("TUBE / SHEET",      "tube_sheet",    12, False),
-    ("SIZE (INCHES)",     "web_size",      12, False),
-    ("FILM SUPPLIER",     "supplier",      15, False),   # field key = supplier
-    ("ORDER QTY",         "order_qty",     10, False),
-    ("PLAIN WT",          "core_wt",       10, False),   # field key = core_wt
-    ("PRINTED WT",        "net_wt",        10, False),   # field key = net_wt
-    ("Printed Wastage",   "printed_waste", 12, False),
-    ("PLAIN WASTAGE",     "plain_waste",   12, False),
-    ("OPERATOR",          "operator",      12, False),
-    ("SETTING TIME",      "setting_time",  12, False),
-    ("START TIME",        "start_time",    10, False),
-    ("END TIME",          "end_time",      10, False),
-    ("Wt. Gain",          "_wt_gain",      10, True),
-    ("Wt. Gain %",        "_wt_gain_pct",  10, True),
-    ("Wastage IN %",      "_wastage_pct",  10, True),
-    ("SIZE IN MM",        "_size_mm",      12, True),
-    ("DENSITY",           "mic",           10, False),   # field key = mic
-    ("CALCULATED METERS", "_calc_meters",  16, True),
-    ("MACHINE RUN TIME",  "_run_time",     14, True),
-    ("AVG ACTUAL SPEED",  "_avg_speed",    14, True),
-    ("SHIFT",             "shift",          8, False),
-    ("Run Hrs (24H)",     "_run_hrs",      10, True),
-    ("NO. OF STOPS",      "machine_stops", 10, False),
-    ("JOB STATUS",        "job_status",    12, False),
+    ("S. NO",             "serial",          6,  False),
+    ("Job Code",          "job_code",        14, False),
+    ("PRINT DATE",        "date",            12, False),
+    ("Job Name",          "job_name",        22, False),
+    ("BAG SIZE",          "bag_size",        14, False),
+    ("PRINTED FILM",      "material",        18, False),
+    ("TUBE / SHEET",      "tube_sheet",      12, False),
+    ("SIZE (INCHES)",     "web_size",        12, False),
+    ("FILM SUPPLIER",     "supplier",        15, False),
+    ("ORDER QTY",         "order_qty",       10, False),
+    ("PLAIN WT",          "net_wt",          10, False),
+    ("PRINTED WT",        "printed_reel_wt", 10, False),
+    ("Printed Wastage",   "printed_waste",   12, False),
+    ("PLAIN WASTAGE",     "plain_waste",     12, False),
+    ("OPERATOR",          "operator",        12, False),
+    ("SETTING TIME",      "setting_time",    12, False),
+    ("START TIME",        "start_time",      10, False),
+    ("END TIME",          "end_time",        10, False),
+    ("Wt. Gain",          "_wt_gain",        10, True),
+    ("Wt. Gain %",        "_wt_gain_pct",    10, True),
+    ("Wastage IN %",      "_wastage_pct",    10, True),
+    ("SIZE IN MM",        "_size_mm",        12, True),
+    ("DENSITY",           "mic",             10, False),
+    ("CALCULATED METERS", "_calc_meters",    16, True),
+    ("MACHINE RUN TIME",  "_run_time",       14, True),
+    ("AVG ACTUAL SPEED",  "_avg_speed",      14, True),
+    ("SHIFT",             "shift",            8, False),
+    ("Run Hrs (24H)",     "_run_hrs",        10, True),
+    ("NO. OF STOPS",      "machine_stops",   10, False),
+    ("JOB STATUS",        "job_status",      12, False),
 ]
 
 MANDATORY_KEYS = {"serial"}
@@ -159,8 +158,8 @@ def _write_serial_wise(ws, records, corrections_map=None, config=None):
         def fc(key):
             return _col(col_of[key]) if key in col_of else None
 
-        pw   = fc("core_wt")
-        prw  = fc("net_wt")
+        pw   = fc("net_wt")           # PLAIN WT
+        prw  = fc("printed_reel_wt")  # PRINTED WT
         plw  = fc("plain_waste")
         st   = fc("start_time")
         et   = fc("end_time")
@@ -249,8 +248,8 @@ def generate_batch_excel(batch_id, records, corrections_map=None):
             data.get("web_size", ""), data.get("mic", ""), data.get("ink_gsm", ""),
             data.get("tube_sheet", ""), data.get("bag_size", ""),
             data.get("setting_time", ""), data.get("start_time", ""), data.get("end_time", ""),
-            data.get("core_wt", ""), data.get("plain_waste", ""),
-            data.get("net_wt", ""), data.get("printed_waste", ""),
+            data.get("net_wt", ""), data.get("plain_waste", ""),
+            data.get("printed_reel_wt", ""), data.get("printed_waste", ""),
         ]
         ws_raw.append(row)
         _style_data_row(ws_raw, ri + 1, len(raw_headers), ri % 2 == 0)
