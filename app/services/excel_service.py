@@ -38,7 +38,7 @@ ALL_COLUMNS = [
     ("Wt. Gain %",        "_wt_gain_pct",    10, True),
     ("Wastage IN %",      "_wastage_pct",    10, True),
     ("SIZE IN MM",        "_size_mm",        12, True),
-    ("DENSITY",           "mic",             10, False),
+    ("MIC",               "mic",             10, False),
     ("CALCULATED METERS", "_calc_meters",    16, True),
     ("MACHINE RUN TIME",  "_run_time",       14, True),
     ("AVG ACTUAL SPEED",  "_avg_speed",      14, True),
