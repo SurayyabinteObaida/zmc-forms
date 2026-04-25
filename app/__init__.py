@@ -18,7 +18,7 @@ def create_app():
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["PERMANENT_SESSION_LIFETIME"] = 3600 * 8  # 8 hours
-    
+
     db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/zmc_forms")
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
@@ -112,43 +112,38 @@ def _seed_form_types():
             "name": "Gravure Printing Production Report",
             "keywords": ["gravure", "F-PRD/01.1", "gravure printing"],
             "fields": [
-                {"key": "print_date",           "label": "Print Date",           "field_type": "date",   "enabled": True, "order": 1},
-                {"key": "job_name",             "label": "Job Name",             "field_type": "text",   "enabled": True, "order": 2},
-                {"key": "job_code",             "label": "Job Code",             "field_type": "text",   "enabled": True, "order": 3},
-                {"key": "material",             "label": "Material",             "field_type": "text",   "enabled": True, "order": 4},
-                {"key": "supplier",             "label": "Supplier",             "field_type": "text",   "enabled": True, "order": 5},
-                {"key": "rm_number",            "label": "R.M #",                "field_type": "text",   "enabled": True, "order": 6},
-                {"key": "plain_order_qty",      "label": "Plain Order Qty",      "field_type": "number", "enabled": True, "order": 7},
-                {"key": "web_size_mic",         "label": "Web Size & Mic",       "field_type": "text",   "enabled": True, "order": 8},
-                {"key": "cylinder_qty_number",  "label": "Cylinder Qty & #",     "field_type": "text",   "enabled": True, "order": 9},
-                {"key": "cylinder_length_cir",  "label": "Cylinder Length x Cir","field_type": "text",   "enabled": True, "order": 10},
-                {"key": "operator",             "label": "Operator",             "field_type": "text",   "enabled": True, "order": 11},
-                {"key": "color_man_ink_gsm",    "label": "Color Man Ink GSM",    "field_type": "text",   "enabled": True, "order": 12},
-                {"key": "speed",                "label": "Speed",                "field_type": "number", "enabled": True, "order": 13},
-                {"key": "setting_time",         "label": "Setting Time",         "field_type": "text",   "enabled": True, "order": 14},
-                {"key": "start_time",           "label": "Start Time",           "field_type": "text",   "enabled": True, "order": 15},
-                {"key": "end_time",             "label": "End Time",             "field_type": "text",   "enabled": True, "order": 16},
-                {"key": "plain_roll_wt",        "label": "Plain Roll Wt.",       "field_type": "number", "enabled": True, "order": 17},
-                {"key": "plain_balance",        "label": "Plain Balance",        "field_type": "number", "enabled": True, "order": 18},
-                {"key": "plain_core_wt",        "label": "Plain Core Wt.",       "field_type": "number", "enabled": True, "order": 19},
-                {"key": "printed_roll_number",  "label": "Printed Roll #",       "field_type": "text",   "enabled": True, "order": 20},
-                {"key": "printed_roll_wt",      "label": "Printed Roll Wt.",     "field_type": "number", "enabled": True, "order": 21},
-                {"key": "printed_core_wt",      "label": "Printed Core Wt.",     "field_type": "number", "enabled": True, "order": 22},
-                {"key": "meter",                "label": "Meter",                "field_type": "number", "enabled": True, "order": 23},
-                {"key": "balance",              "label": "Balance",              "field_type": "number", "enabled": True, "order": 24},
-                {"key": "rejected",             "label": "Rejected",             "field_type": "number", "enabled": True, "order": 25},
-                {"key": "gross_wt",             "label": "Gross Wt.",            "field_type": "number", "enabled": True, "order": 26},
-                {"key": "net_wt",               "label": "Net Wt.",              "field_type": "number", "enabled": True, "order": 27},
-                {"key": "total_mtr",            "label": "Total Mtr.",           "field_type": "number", "enabled": True, "order": 28},
-                {"key": "plain_waste",          "label": "Plain Waste",          "field_type": "number", "enabled": True, "order": 29},
-                {"key": "roll_waste",           "label": "Roll Waste",           "field_type": "number", "enabled": True, "order": 30},
-                {"key": "printed_waste",        "label": "Printed Waste",        "field_type": "number", "enabled": True, "order": 31},
-                {"key": "setting_waste",        "label": "Setting Waste",        "field_type": "number", "enabled": True, "order": 32},
-                {"key": "total_waste_core_wt",  "label": "Total Waste Core Wt.", "field_type": "number", "enabled": True, "order": 33},
-                {"key": "total_waste_net_wt",   "label": "Total Waste Net Wt.",  "field_type": "number", "enabled": True, "order": 34},
-                {"key": "prepared_by",          "label": "Prepared By",          "field_type": "text",   "enabled": True, "order": 35},
-                {"key": "supervisor",           "label": "Supervisor",           "field_type": "text",   "enabled": True, "order": 36},
-                {"key": "remarks",              "label": "Remarks",              "field_type": "text",   "enabled": True, "order": 37},
+                {"key": "print_date",          "label": "Print Date",            "field_type": "date",   "enabled": True,  "order": 1},
+                {"key": "job_name",            "label": "Job Name",              "field_type": "text",   "enabled": True,  "order": 2},
+                {"key": "job_code",            "label": "Job Code",              "field_type": "text",   "enabled": True,  "order": 3},
+                {"key": "plain_order_qty",     "label": "Plain Order Qty",       "field_type": "number", "enabled": True,  "order": 4},
+                {"key": "material",            "label": "Material",              "field_type": "text",   "enabled": True,  "order": 5},
+                {"key": "material_supplier",   "label": "Material Supplier",     "field_type": "text",   "enabled": True,  "order": 6},
+                {"key": "web_size_mic",        "label": "Web Size & MIC",        "field_type": "text",   "enabled": True,  "order": 7},
+                {"key": "cylinder_qty_number", "label": "Cylinder Qty & #",      "field_type": "text",   "enabled": True,  "order": 8},
+                {"key": "cylinder_length_cir", "label": "Cylinder Length x Cir", "field_type": "text",   "enabled": True,  "order": 9},
+                {"key": "speed",               "label": "Speed",                 "field_type": "number", "enabled": True,  "order": 10},
+                {"key": "operator",            "label": "Operator",              "field_type": "text",   "enabled": True,  "order": 11},
+                {"key": "color_man",           "label": "Color Man",             "field_type": "text",   "enabled": True,  "order": 12},
+                {"key": "ink_gsm",             "label": "Ink GSM",               "field_type": "number", "enabled": True,  "order": 13},
+                {"key": "setting_time",        "label": "Setting Time",          "field_type": "text",   "enabled": True,  "order": 14},
+                {"key": "start_time",          "label": "Start Time",            "field_type": "text",   "enabled": True,  "order": 15},
+                {"key": "end_time",            "label": "End Time",              "field_type": "text",   "enabled": True,  "order": 16},
+                {"key": "plain_gross_wt",      "label": "Plain Gross Wt.",       "field_type": "number", "enabled": True,  "order": 17},
+                {"key": "printed_gross_wt",    "label": "Printed Gross Wt.",     "field_type": "number", "enabled": True,  "order": 18},
+                {"key": "plain_core_wt",       "label": "Plain Core Wt.",        "field_type": "number", "enabled": True,  "order": 19},
+                {"key": "printed_core_wt",     "label": "Printed Core Wt.",      "field_type": "number", "enabled": True,  "order": 20},
+                {"key": "plain_balance",       "label": "Plain Balance",         "field_type": "number", "enabled": True,  "order": 21},
+                {"key": "plain_net_wt",        "label": "Plain Net Wt.",         "field_type": "number", "enabled": True,  "order": 22},
+                {"key": "printed_net_wt",      "label": "Printed Net Wt.",       "field_type": "number", "enabled": True,  "order": 23},
+                {"key": "total_mtr",           "label": "Total Mtr.",            "field_type": "number", "enabled": True,  "order": 24},
+                {"key": "plain_waste",         "label": "Plain Waste",           "field_type": "number", "enabled": True,  "order": 25},
+                {"key": "roll_waste",          "label": "Roll Waste",            "field_type": "number", "enabled": True,  "order": 26},
+                {"key": "printed_waste",       "label": "Printed Waste",         "field_type": "number", "enabled": True,  "order": 27},
+                {"key": "setting_waste",       "label": "Setting Waste",         "field_type": "number", "enabled": True,  "order": 28},
+                {"key": "total_waste",         "label": "Total Waste",           "field_type": "number", "enabled": True,  "order": 29},
+                {"key": "prepared_by",         "label": "Prepared By",           "field_type": "text",   "enabled": True,  "order": 30},
+                {"key": "supervisor",          "label": "Supervisor",            "field_type": "text",   "enabled": True,  "order": 31},
+                {"key": "remarks",             "label": "Remarks",               "field_type": "text",   "enabled": False, "order": 32},
             ],
         },
     ]
@@ -173,7 +168,6 @@ def _seed_form_types():
                     order=f["order"],
                 ))
         else:
-            # Upsert: update labels and enabled states for existing form
             existing_fields = {fc.key: fc for fc in existing.field_configs}
             for f in form_data["fields"]:
                 if f["key"] in existing_fields:
@@ -182,7 +176,6 @@ def _seed_form_types():
                     fc.enabled = f["enabled"]
                     fc.order = f["order"]
                 else:
-                    # New field added to seed — insert it
                     db.session.add(FieldConfig(
                         form_type_id=existing.id,
                         key=f["key"],
