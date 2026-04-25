@@ -54,7 +54,9 @@ class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     batch_id = db.Column(db.String(100), unique=True, nullable=False)
     uploaded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    status = db.Column(db.String(50), default="pending")  # pending | verified | saved
+
+    # V2 status lifecycle: pending → classified → extracted → verified → saved
+    status = db.Column(db.String(50), default="pending")
 
     records = db.relationship("ExtractedRecord", back_populates="submission",
                               cascade="all, delete-orphan")
@@ -77,7 +79,8 @@ class ExtractedRecord(db.Model):
     # Verified / saved data (JSON blob as text)
     verified_data = db.Column(db.Text, nullable=True)
 
-    status = db.Column(db.String(50), default="extracted")  # extracted | verified | saved | error
+    # V2 status lifecycle: classified → extracted → verified → saved | error
+    status = db.Column(db.String(50), default="classified")
     error_message = db.Column(db.Text, nullable=True)
     confidence = db.Column(db.Float, nullable=True)
 
@@ -87,8 +90,8 @@ class ExtractedRecord(db.Model):
     submission = db.relationship("Submission", back_populates="records")
     form_type = db.relationship("FormType", foreign_keys=[form_type_id])
 
-    # ── Typed storage tables ──────────────────────────────────────────────────
 
+# ── Typed storage tables ──────────────────────────────────────────────────────
 
 class FlexoPrintingRecord(db.Model):
     """Permanent typed storage for verified Flexo Printing records."""
@@ -142,47 +145,79 @@ class FlexoPrintingRecord(db.Model):
 
 
 class GravurePrintingRecord(db.Model):
-    """Permanent typed storage for verified Gravure Printing records."""
+    """
+    Permanent typed storage for verified Gravure Printing records.
+    Header + footer/summary scalars only. Per-roll data lives in GravureRollRow.
+    """
     __tablename__ = "gravure_printing_records"
 
     id = db.Column(db.Integer, primary_key=True)
     extracted_record_id = db.Column(db.Integer, db.ForeignKey("extracted_records.id"), unique=True)
     saved_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # ── Header fields ─────────────────────────────────────────────────────────
     print_date = db.Column(db.String(50))
     job_name = db.Column(db.String(200))
     job_code = db.Column(db.String(100))
-    material = db.Column(db.String(200))
-    supplier = db.Column(db.String(200))
-    rm_number = db.Column(db.String(100))
     plain_order_qty = db.Column(db.Float)
+    material = db.Column(db.String(200))
+    material_supplier = db.Column(db.String(200))
     web_size_mic = db.Column(db.String(200))
     cylinder_qty_number = db.Column(db.String(200))
     cylinder_length_cir = db.Column(db.String(200))
-    operator = db.Column(db.String(200))
-    color_man_ink_gsm = db.Column(db.String(200))
     speed = db.Column(db.Float)
+    operator = db.Column(db.String(200))
+    color_man = db.Column(db.String(200))
+    ink_gsm = db.Column(db.Float)
     setting_time = db.Column(db.String(100))
     start_time = db.Column(db.String(100))
     end_time = db.Column(db.String(100))
-    plain_roll_wt = db.Column(db.Float)
-    plain_balance = db.Column(db.Float)
+
+    # ── Footer / summary fields ───────────────────────────────────────────────
+    plain_gross_wt = db.Column(db.Float)
+    printed_gross_wt = db.Column(db.Float)
     plain_core_wt = db.Column(db.Float)
-    printed_roll_number = db.Column(db.String(200))
-    printed_roll_wt = db.Column(db.Float)
     printed_core_wt = db.Column(db.Float)
-    meter = db.Column(db.Float)
-    balance = db.Column(db.Float)
-    rejected = db.Column(db.Float)
-    gross_wt = db.Column(db.Float)
-    net_wt = db.Column(db.Float)
+    plain_balance = db.Column(db.Float)
+    plain_net_wt = db.Column(db.Float)
+    printed_net_wt = db.Column(db.Float)
     total_mtr = db.Column(db.Float)
     plain_waste = db.Column(db.Float)
     roll_waste = db.Column(db.Float)
     printed_waste = db.Column(db.Float)
     setting_waste = db.Column(db.Float)
-    total_waste_core_wt = db.Column(db.Float)
-    total_waste_net_wt = db.Column(db.Float)
+    total_waste = db.Column(db.Float)
+
+    # ── Signatures ────────────────────────────────────────────────────────────
     prepared_by = db.Column(db.String(200))
     supervisor = db.Column(db.String(200))
     remarks = db.Column(db.Text)
+
+    # ── Relationship to per-roll rows ─────────────────────────────────────────
+    roll_rows = db.relationship(
+        "GravureRollRow",
+        back_populates="gravure_record",
+        cascade="all, delete-orphan",
+        order_by="GravureRollRow.row_index"
+    )
+
+
+class GravureRollRow(db.Model):
+    """One row in the Gravure Printing roll table (one row per RM roll processed)."""
+    __tablename__ = "gravure_roll_rows"
+
+    id = db.Column(db.Integer, primary_key=True)
+    gravure_record_id = db.Column(db.Integer, db.ForeignKey("gravure_printing_records.id"), nullable=False)
+    row_index = db.Column(db.Integer, nullable=False)   # preserves original row order
+
+    rm_number = db.Column(db.String(100))
+    plain_roll_wt = db.Column(db.Float)
+    plain_balance_rejected = db.Column(db.Float)
+    plain_core_wt = db.Column(db.Float)
+    printed_roll_number = db.Column(db.String(200))
+    printed_roll_wt = db.Column(db.Float)
+    printed_core_wt = db.Column(db.Float)
+    meter = db.Column(db.Float)
+    remarks = db.Column(db.Text)
+
+    gravure_record = db.relationship("GravurePrintingRecord", back_populates="roll_rows")

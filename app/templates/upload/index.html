@@ -5,7 +5,7 @@
 {% block content %}
 <div class="mb-4">
   <h4 style="font-weight:700;">Upload Production Forms</h4>
-  <p class="text-muted mb-0" style="font-size:.875rem;">Upload batch images of hand-filled forms. The system will auto-identify and extract data from each.</p>
+  <p class="text-muted mb-0" style="font-size:.875rem;">Upload batch images of hand-filled forms. The system will auto-identify the form type and extract data from each.</p>
 </div>
 
 <div class="row g-4">
@@ -38,7 +38,7 @@
       <button id="upload-btn" class="btn w-100 py-2 disabled"
               style="background:var(--zmc-blue);color:#fff;font-weight:600;"
               onclick="startUpload()">
-        <i class="bi bi-lightning-charge me-2"></i>Extract Data from Forms
+        <i class="bi bi-lightning-charge me-2"></i>Upload & Classify Forms
       </button>
     </div>
   </div>
@@ -71,9 +71,10 @@
       <h6 class="fw-600 mb-3" style="font-weight:600;"><i class="bi bi-list-ol me-2 text-primary"></i>Process Steps</h6>
       {% for step in [
         ('1', 'Upload', 'Select and upload batch of form images'),
-        ('2', 'AI Extraction', 'System auto-identifies form type and extracts all fields'),
-        ('3', 'Verify', 'Review and correct extracted data'),
-        ('4', 'Save', 'Confirm and store data in database + Excel'),
+        ('2', 'Classify', 'System reads the form header and identifies each type'),
+        ('3', 'Extract', 'Trigger AI extraction per category'),
+        ('4', 'Verify', 'Review and correct extracted data'),
+        ('5', 'Save', 'Confirm and store data in database + Excel'),
       ] %}
       <div class="d-flex align-items-start gap-3 {% if not loop.last %}mb-3{% endif %}">
         <div class="rounded-circle d-flex align-items-center justify-content-center fw-700"
@@ -93,7 +94,7 @@
 <!-- Progress / Results -->
 <div id="progress-section" class="mt-4" style="display:none;">
   <div class="bg-white rounded-3 border p-4" style="border-color:#E2E8F0 !important;">
-    <h6 class="fw-600 mb-3" style="font-weight:600;"><i class="bi bi-cpu me-2 text-primary"></i>Extraction Progress</h6>
+    <h6 class="fw-600 mb-3" style="font-weight:600;"><i class="bi bi-cpu me-2 text-primary"></i>Classification Progress</h6>
     <div class="progress mb-3" style="height:8px;border-radius:4px;">
       <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
            style="background:var(--zmc-blue);width:0%"></div>
@@ -151,8 +152,8 @@ async function startUpload() {
   if (!selectedFiles.length) return;
 
   const section = document.getElementById('progress-section');
-  const bar = document.getElementById('progress-bar');
-  const log = document.getElementById('progress-log');
+  const bar     = document.getElementById('progress-bar');
+  const log     = document.getElementById('progress-log');
   section.style.display = 'block';
   uploadBtn.disabled = true;
 
@@ -173,16 +174,20 @@ async function startUpload() {
     bar.classList.remove('progress-bar-animated');
     bar.style.background = '#059669';
 
-    log.innerHTML += `<div class="text-success mb-1">Extracted ${data.results.length} form(s)</div>`;
-    data.results.forEach(r => {
-      const icon = r.error ? 'Error' : 'OK';
-      const info = r.error ? r.error : `${r.form_code || 'Unknown'} (${Math.round((r.confidence||0)*100)}% confidence)`;
-      log.innerHTML += `<div class="mb-1">${icon} <strong>${r.filename}</strong>: ${info}</div>`;
+    log.innerHTML += `<div class="text-success mb-1">Classified ${data.total} form(s)</div>`;
+
+    // Show summary per category
+    (data.summary || []).forEach(cat => {
+      log.innerHTML += `<div class="mb-1">
+        <strong>${cat.form_code}</strong> — ${cat.form_name}: ${cat.count} form(s)
+        ${cat.error_count > 0 ? `<span class="text-danger">(${cat.error_count} error)</span>` : ''}
+      </div>`;
     });
 
+    // Redirect to classify screen
     setTimeout(() => {
-      window.location.href = `/verify/${data.submission_id}`;
-    }, 1800);
+      window.location.href = `/upload/classify/${data.submission_id}`;
+    }, 1200);
 
   } catch(err) {
     bar.style.background = '#DC2626';

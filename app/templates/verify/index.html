@@ -25,6 +25,34 @@
                     border-radius:4px; padding:1px 5px; margin-left:4px; }
 .verify-input.auto-corrected { border-color:#F59E0B; background:#FFFBEB; }
 .verify-input.auto-corrected:focus { box-shadow:0 0 0 3px rgba(245,158,11,.15); }
+
+/* Gravure roll rows table */
+.roll-table-wrap { overflow-x:auto; margin-top:.75rem; }
+.roll-table { width:100%; border-collapse:collapse; font-size:.8rem; min-width:700px; }
+.roll-table th {
+  background:#1e3a5f; color:#fff; font-weight:600; font-size:.72rem;
+  text-transform:uppercase; letter-spacing:.04em;
+  padding:.45rem .6rem; text-align:center; white-space:nowrap;
+  border:1px solid #16304f;
+}
+.roll-table td {
+  padding:.3rem .4rem; border:1px solid #e2e8f0; vertical-align:middle;
+}
+.roll-table tbody tr:nth-child(even) { background:#f8fafc; }
+.roll-table tbody tr:hover { background:#EBF4FF; }
+.roll-input {
+  border:none; background:transparent; width:100%; font-size:.8rem;
+  padding:.15rem .25rem; text-align:center;
+}
+.roll-input:focus { outline:1px solid var(--zmc-blue-light); border-radius:3px; background:#fff; }
+.roll-input.modified { background:#FFFBEB; }
+.roll-table tfoot td {
+  background:#f1f5f9; font-weight:600; font-size:.78rem; text-align:center;
+  border:1px solid #e2e8f0; padding:.4rem;
+}
+.add-row-btn {
+  font-size:.78rem; padding:.25rem .75rem; margin-top:.5rem;
+}
 </style>
 {% endblock %}
 
@@ -36,11 +64,20 @@
       Batch: <code>{{ submission.batch_id[:20] }}…</code> ·
       {{ enriched | length }} form(s) extracted ·
       Uploaded {{ submission.uploaded_at.strftime('%Y-%m-%d %H:%M') }}
+      {% if active_form_type %}
+      · <span class="badge" style="background:var(--zmc-blue);color:#fff;">{{ active_form_type.code }}</span>
+      {% endif %}
     </p>
   </div>
-  <a href="{{ url_for('upload.index') }}" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-arrow-left me-1"></i>New Upload
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('upload.classify_screen', submission_id=submission.id) }}"
+       class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Back to Categories
+    </a>
+    <a href="{{ url_for('upload.index') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>New Upload
+    </a>
+  </div>
 </div>
 
 {% if enriched %}
@@ -92,6 +129,7 @@
   <!-- Right: Verification panel -->
   <div class="col-lg-9">
     {% for item in enriched %}
+    {% set is_gravure = item.form_type and item.form_type.code == 'F-PRD/01.1' %}
     <div id="panel-{{ item.record.id }}" class="record-panel" style="{% if not loop.first %}display:none;{% endif %}">
       <div class="bg-white rounded-3 border" style="border-color:#E2E8F0 !important;">
 
@@ -108,14 +146,12 @@
             <span class="badge badge-error">{{ item.record.error_message[:60] }}</span>
             {% endif %}
 
-            <!-- Export this record's batch -->
             <button class="btn btn-sm btn-outline-success"
                     onclick="exportBatch({{ submission.id }}, {{ item.record.id }})"
                     title="Export this batch to Excel">
               <i class="bi bi-file-earmark-excel me-1"></i>Export Batch
             </button>
 
-            <!-- Form type override -->
             <select class="form-select form-select-sm" style="width:auto;font-size:.8rem;"
                     onchange="overrideFormType({{ item.record.id }}, this.value)">
               <option value="">— Override Form Type —</option>
@@ -126,7 +162,6 @@
               {% endfor %}
             </select>
 
-            <!-- View toggle -->
             <div class="btn-group btn-group-sm">
               <button class="btn btn-outline-secondary active" onclick="setView({{ item.record.id }}, 'form', this)">
                 <i class="bi bi-pencil-square"></i>
@@ -160,7 +195,8 @@
                   step="any"
                 />
                 {% if item.corrections and field.key in item.corrections %}
-                <span class="correction-badge" title="Auto-corrected from: {{ item.corrections[field.key].original }} ({{ item.corrections[field.key].score }}% match)">
+                <span class="correction-badge"
+                  title="Auto-corrected from: {{ item.corrections[field.key].original }} ({{ item.corrections[field.key].score }}% match)">
                   ✦ auto-corrected
                 </span>
                 {% endif %}
@@ -168,6 +204,7 @@
               {% endfor %}
             </div>
           </form>
+
           {% else %}
           <div class="text-center text-muted py-4">
             <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
@@ -175,7 +212,70 @@
             <small>Use the form type override above to assign this form manually.</small>
           </div>
           {% endif %}
-        </div>
+
+          {# ── Gravure Roll Rows Table ─────────────────────────────────────── #}
+          {% if is_gravure %}
+          <div class="field-group-label mt-3">
+            <i class="bi bi-table me-1"></i>Roll Detail Rows
+          </div>
+          <div class="roll-table-wrap">
+            <table class="roll-table" id="roll-table-{{ item.record.id }}">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>RM #</th>
+                  <th>Plain Roll Wt.</th>
+                  <th>Plain Bal. Rej.</th>
+                  <th>Plain Core Wt.</th>
+                  <th>Printed Roll #</th>
+                  <th>Printed Roll Wt.</th>
+                  <th>Printed Core Wt.</th>
+                  <th>Meter</th>
+                  <th>Remarks</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="roll-tbody-{{ item.record.id }}">
+                {% for row in item.roll_rows %}
+                <tr>
+                  <td style="color:#94a3b8;text-align:center;">{{ loop.index }}</td>
+                  <td><input class="roll-input" type="text"   name="rm_number"               value="{{ row.rm_number or '' }}"               oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="plain_roll_wt"            value="{{ row.plain_roll_wt or '' }}"            step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="plain_balance_rejected"   value="{{ row.plain_balance_rejected or '' }}"   step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="plain_core_wt"            value="{{ row.plain_core_wt or '' }}"            step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="text"   name="printed_roll_number"      value="{{ row.printed_roll_number or '' }}"      oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="printed_roll_wt"          value="{{ row.printed_roll_wt or '' }}"          step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="printed_core_wt"          value="{{ row.printed_core_wt or '' }}"          step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="meter"                    value="{{ row.meter or '' }}"                    step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="text"   name="remarks"                  value="{{ row.remarks or '' }}"                  oninput="onRollChange(this)"></td>
+                  <td><button type="button" class="btn btn-sm p-0 text-danger" onclick="removeRollRow(this)" title="Remove row"><i class="bi bi-x-lg"></i></button></td>
+                </tr>
+                {% endfor %}
+                {% if not item.roll_rows %}
+                <tr>
+                  <td style="color:#94a3b8;text-align:center;">1</td>
+                  <td><input class="roll-input" type="text"   name="rm_number"               value="" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="plain_roll_wt"            value="" step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="plain_balance_rejected"   value="" step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="plain_core_wt"            value="" step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="text"   name="printed_roll_number"      value="" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="printed_roll_wt"          value="" step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="printed_core_wt"          value="" step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="number" name="meter"                    value="" step="any" oninput="onRollChange(this)"></td>
+                  <td><input class="roll-input" type="text"   name="remarks"                  value="" oninput="onRollChange(this)"></td>
+                  <td><button type="button" class="btn btn-sm p-0 text-danger" onclick="removeRollRow(this)" title="Remove row"><i class="bi bi-x-lg"></i></button></td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm add-row-btn"
+                  onclick="addRollRow({{ item.record.id }})">
+            <i class="bi bi-plus me-1"></i>Add Row
+          </button>
+          {% endif %}
+
+        </div>{# end form-view #}
 
         <!-- JSON View -->
         <div id="json-view-{{ item.record.id }}" class="p-4" style="display:none;">
@@ -190,7 +290,7 @@
             <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Changes
           </button>
           <button class="btn btn-sm px-4" style="background:var(--zmc-blue);color:#fff;"
-                  onclick="saveRecord({{ item.record.id }})"
+                  onclick="saveRecord({{ item.record.id }}, {{ is_gravure | tojson }})"
                   id="save-btn-{{ item.record.id }}"
                   {% if item.record.status == 'saved' %}disabled{% endif %}>
             {% if item.record.status == 'saved' %}
@@ -233,19 +333,18 @@
 </div>
 {% endif %}
 
-<!-- Pass data to JS -->
 <script>
 const SUBMISSION_ID = {{ submission.id }};
 const FORM_TYPES_AVAILABLE = {{ form_types | map(attribute='id') | list | tojson }};
+const FORM_TYPE_FILTER = {{ (form_type_filter or '') | tojson }};
 </script>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const savedState = {};
-const modifiedState = {};
 let savedCount = 0;
 
+// ── Navigation ────────────────────────────────────────────────────────────────
 function switchRecord(id) {
   document.querySelectorAll('.record-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.record-panel').forEach(p => p.style.display = 'none');
@@ -258,7 +357,6 @@ function setView(id, view, btn) {
   const jv = document.getElementById('json-view-' + id);
   btn.closest('.btn-group').querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-
   if (view === 'json') {
     fv.style.display = 'none'; jv.style.display = 'block';
     const data = collectFormData(id);
@@ -268,19 +366,16 @@ function setView(id, view, btn) {
   }
 }
 
+// ── Field change tracking ─────────────────────────────────────────────────────
 function onFieldChange(input) {
   input.classList.toggle('modified', input.value !== input.dataset.original);
 }
 
-function resetForm(id) {
-  const form = document.getElementById('verify-form-' + id);
-  if (!form) return;
-  form.querySelectorAll('.verify-input').forEach(inp => {
-    inp.value = inp.dataset.original;
-    inp.classList.remove('modified');
-  });
+function onRollChange(input) {
+  input.classList.add('modified');
 }
 
+// ── Data collection ───────────────────────────────────────────────────────────
 function collectFormData(id) {
   const form = document.getElementById('verify-form-' + id);
   if (!form) return {};
@@ -291,18 +386,92 @@ function collectFormData(id) {
   return data;
 }
 
-async function saveRecord(id) {
+function collectRollRows(id) {
+  const tbody = document.getElementById('roll-tbody-' + id);
+  if (!tbody) return null;   // not a gravure form
+
+  const rows = [];
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const inputs = tr.querySelectorAll('.roll-input');
+    if (!inputs.length) return;
+    const row = {};
+    inputs.forEach(inp => {
+      row[inp.name] = inp.value === '' ? null : inp.value;
+    });
+    // skip entirely blank rows
+    if (Object.values(row).some(v => v !== null && v !== '')) {
+      rows.push(row);
+    }
+  });
+  return rows;
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+function resetForm(id) {
+  const form = document.getElementById('verify-form-' + id);
+  if (form) {
+    form.querySelectorAll('.verify-input').forEach(inp => {
+      inp.value = inp.dataset.original;
+      inp.classList.remove('modified');
+    });
+  }
+}
+
+// ── Roll row management ───────────────────────────────────────────────────────
+const ROLL_COLS = [
+  ['rm_number', 'text'], ['plain_roll_wt', 'number'], ['plain_balance_rejected', 'number'],
+  ['plain_core_wt', 'number'], ['printed_roll_number', 'text'], ['printed_roll_wt', 'number'],
+  ['printed_core_wt', 'number'], ['meter', 'number'], ['remarks', 'text'],
+];
+
+function addRollRow(recordId) {
+  const tbody = document.getElementById('roll-tbody-' + recordId);
+  const rowNum = tbody.querySelectorAll('tr').length + 1;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td style="color:#94a3b8;text-align:center;">${rowNum}</td>
+    ${ROLL_COLS.map(([name, type]) => `
+      <td><input class="roll-input" type="${type}" name="${name}" value=""
+        ${type === 'number' ? 'step="any"' : ''} oninput="onRollChange(this)"></td>
+    `).join('')}
+    <td><button type="button" class="btn btn-sm p-0 text-danger"
+      onclick="removeRollRow(this)" title="Remove row"><i class="bi bi-x-lg"></i></button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function removeRollRow(btn) {
+  const tr = btn.closest('tr');
+  const tbody = tr.parentElement;
+  if (tbody.querySelectorAll('tr').length <= 1) {
+    // clear instead of remove if last row
+    tr.querySelectorAll('.roll-input').forEach(inp => inp.value = '');
+    return;
+  }
+  tr.remove();
+  // renumber
+  tbody.querySelectorAll('tr').forEach((row, i) => {
+    const first = row.querySelector('td');
+    if (first) first.textContent = i + 1;
+  });
+}
+
+// ── Save single record ────────────────────────────────────────────────────────
+async function saveRecord(id, isGravure) {
   const btn = document.getElementById('save-btn-' + id);
   const data = collectFormData(id);
+  const rollRows = isGravure ? collectRollRows(id) : null;
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
 
+  const payload = isGravure ? { data, roll_rows: rollRows } : { data };
+
   try {
     const res = await fetch(`/verify/save/${id}`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({data})
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
     const json = await res.json();
     if (json.success) {
@@ -310,7 +479,7 @@ async function saveRecord(id) {
       btn.style.background = '#059669';
       const tab = document.getElementById('tab-' + id);
       const icon = tab.querySelector('.bi-circle, .bi-exclamation-circle-fill');
-      if (icon) { icon.className = 'bi bi-check-circle-fill text-success mt-1 flex-shrink-0'; }
+      if (icon) icon.className = 'bi bi-check-circle-fill text-success mt-1 flex-shrink-0';
       savedCount++;
       document.getElementById('saved-count').textContent = savedCount;
     } else {
@@ -324,6 +493,7 @@ async function saveRecord(id) {
   }
 }
 
+// ── Save all ──────────────────────────────────────────────────────────────────
 async function saveAll() {
   const panels = document.querySelectorAll('.record-panel');
   const allData = {};
@@ -332,13 +502,13 @@ async function saveAll() {
     const id = panel.id.replace('panel-', '');
     const saveBtn = document.getElementById('save-btn-' + id);
     if (saveBtn && saveBtn.disabled && saveBtn.textContent.includes('Saved')) return;
-    allData[id] = collectFormData(parseInt(id));
+
+    const data = collectFormData(parseInt(id));
+    const rollRows = collectRollRows(parseInt(id));
+    allData[id] = rollRows !== null ? { data, roll_rows: rollRows } : data;
   });
 
-  if (!Object.keys(allData).length) {
-    alert('All records are already saved!');
-    return;
-  }
+  if (!Object.keys(allData).length) { alert('All records are already saved!'); return; }
 
   const confirmed = confirm(`Save ${Object.keys(allData).length} record(s) to database?`);
   if (!confirmed) return;
@@ -346,16 +516,16 @@ async function saveAll() {
   try {
     const res = await fetch(`/verify/save-batch/${SUBMISSION_ID}`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({records: allData})
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: allData }),
     });
     const json = await res.json();
     if (json.success) {
       json.saved.forEach(id => {
         const btn = document.getElementById('save-btn-' + id);
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Saved'; btn.style.background='#059669'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Saved'; btn.style.background = '#059669'; }
         const tab = document.getElementById('tab-' + id);
-        if (tab) { const icon = tab.querySelector('.bi'); if(icon) icon.className='bi bi-check-circle-fill text-success mt-1 flex-shrink-0'; }
+        if (tab) { const icon = tab.querySelector('.bi'); if (icon) icon.className = 'bi bi-check-circle-fill text-success mt-1 flex-shrink-0'; }
       });
       document.getElementById('saved-count').textContent = json.saved.length;
       alert(`${json.saved.length} record(s) saved successfully!${json.errors.length ? '\nErrors: ' + json.errors.join(', ') : ''}`);
@@ -365,20 +535,24 @@ async function saveAll() {
   }
 }
 
+// ── Form type override ────────────────────────────────────────────────────────
 async function overrideFormType(recordId, formTypeId) {
   if (!formTypeId) return;
   await fetch(`/verify/update-form-type/${recordId}`, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({form_type_id: parseInt(formTypeId)})
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ form_type_id: parseInt(formTypeId) }),
   });
   window.location.reload();
 }
 
+// ── Export ────────────────────────────────────────────────────────────────────
 async function exportBatch(submissionId, recordId) {
-  const url = recordId
+  let url = recordId
     ? `/verify/export-batch/${submissionId}?record_id=${recordId}`
     : `/verify/export-batch/${submissionId}`;
+  if (FORM_TYPE_FILTER) url += `${recordId ? '&' : '?'}form_type=${encodeURIComponent(FORM_TYPE_FILTER)}`;
+
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(await res.text());
@@ -392,9 +566,9 @@ async function exportBatch(submissionId, recordId) {
   }
 }
 
+// ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  const tabs = document.querySelectorAll('.record-tab');
-  tabs.forEach(tab => {
+  document.querySelectorAll('.record-tab').forEach(tab => {
     if (tab.querySelector('.bi-check-circle-fill')) savedCount++;
   });
   document.getElementById('saved-count').textContent = savedCount;
