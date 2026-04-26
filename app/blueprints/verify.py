@@ -1,11 +1,5 @@
 """
 verify.py  (V2)
-────────────────────────────────────────────────────────────────────────────
-Changes from V1:
-  - index() now accepts optional ?form_type=<code> query param to show only
-    records of that category (navigated from classify screen).
-  - save_record() / save_batch() handle GravurePrintingRecord + GravureRollRow.
-  - Everything else unchanged.
 """
 import json
 from datetime import datetime, timezone
@@ -15,7 +9,7 @@ from app import db
 from app.services.excel_service import (generate_batch_excel,
     get_column_config_for_ui, save_export_config)
 from app.models import (FormType, ExtractedRecord, Submission,
-                        FlexoPrintingRecord, GravurePrintingRecord, GravureRollRow)
+                        FlexoPrintingRecord, GravurePrintingRecord)
 from app.blueprints.auth import login_required
 
 verify_bp = Blueprint("verify", __name__)
@@ -30,9 +24,7 @@ FORM_MODEL_MAP = {
 @login_required
 def index(submission_id):
     submission = Submission.query.get_or_404(submission_id)
-
-    # Optional filter: only show records of a specific form type
-    form_type_filter = request.args.get("form_type")  # e.g. "F-PRD/01.1"
+    form_type_filter = request.args.get("form_type")
 
     query = ExtractedRecord.query.filter_by(submission_id=submission_id)
     if form_type_filter:
@@ -49,16 +41,10 @@ def index(submission_id):
         enabled_fields = form_type.enabled_fields() if form_type else []
 
         corrections = {}
-        if hasattr(rec, "corrections_json"):
-            try:
-                corrections = json.loads(rec.corrections_json or "{}")
-            except Exception:
-                pass
-
-        # For gravure: pull roll_rows out of raw_data so the template can render them separately
-        roll_rows = []
-        if form_type and form_type.code == "F-PRD/01.1":
-            roll_rows = raw_data.pop("roll_rows", []) or []
+        try:
+            corrections = json.loads(rec.corrections_json or "{}") if hasattr(rec, "corrections_json") else {}
+        except Exception:
+            pass
 
         enriched.append({
             "record": rec,
@@ -66,7 +52,6 @@ def index(submission_id):
             "raw_data": raw_data,
             "enabled_fields": enabled_fields,
             "corrections": corrections,
-            "roll_rows": roll_rows,
         })
 
     form_types_all = FormType.query.all()
@@ -88,12 +73,6 @@ def get_record(record_id):
     rec = ExtractedRecord.query.get_or_404(record_id)
     form_type = FormType.query.get(rec.form_type_id) if rec.form_type_id else None
     data = json.loads(rec.raw_extraction or "{}")
-
-    # Separate roll_rows for gravure
-    roll_rows = []
-    if form_type and form_type.code == "F-PRD/01.1":
-        roll_rows = data.pop("roll_rows", []) or []
-
     fields = [f.to_dict() for f in form_type.enabled_fields()] if form_type else []
 
     return jsonify({
@@ -106,7 +85,6 @@ def get_record(record_id):
         "error": rec.error_message,
         "fields": fields,
         "data": data,
-        "roll_rows": roll_rows,
         "image_path": rec.image_path,
     })
 
@@ -122,9 +100,7 @@ def save_record(record_id):
 
     payload = request.get_json()
     verified_data = payload.get("data", {})
-    roll_rows_data = payload.get("roll_rows", [])  # only present for gravure
 
-    # Store verified_data (without roll_rows — those go to their own table)
     rec.verified_data = json.dumps(verified_data)
     rec.status = "saved"
     rec.saved_at = datetime.now(timezone.utc)
@@ -141,11 +117,6 @@ def save_record(record_id):
             if hasattr(typed, key):
                 setattr(typed, key, value if value != "" else None)
         db.session.add(typed)
-        db.session.flush()
-
-        # Gravure: save roll rows to GravureRollRow table
-        if form_type.code == "F-PRD/01.1" and roll_rows_data:
-            _save_gravure_roll_rows(typed.id, roll_rows_data)
 
     db.session.commit()
     return jsonify({"success": True, "record_id": rec.id, "status": rec.status})
@@ -173,13 +144,7 @@ def save_batch(submission_id):
             errors.append(f"Record {rid}: unknown form type")
             continue
 
-        # Support both flat dict (legacy) and {data, roll_rows} (V2 gravure)
-        if isinstance(record_payload, dict) and "data" in record_payload:
-            verified_data = record_payload["data"]
-            roll_rows_data = record_payload.get("roll_rows", [])
-        else:
-            verified_data = record_payload
-            roll_rows_data = []
+        verified_data = record_payload.get("data", record_payload)
 
         rec.verified_data = json.dumps(verified_data)
         rec.status = "saved"
@@ -197,10 +162,6 @@ def save_batch(submission_id):
                 if hasattr(typed, key):
                     setattr(typed, key, value if value != "" else None)
             db.session.add(typed)
-            db.session.flush()
-
-            if form_type.code == "F-PRD/01.1" and roll_rows_data:
-                _save_gravure_roll_rows(typed.id, roll_rows_data)
 
         saved_ids.append(rid)
 
@@ -217,7 +178,6 @@ def update_form_type(record_id):
     payload = request.get_json()
     form_type_id = payload.get("form_type_id")
     rec.form_type_id = form_type_id
-    # Reset to classified so it can be re-extracted with correct type
     if rec.status in ("extracted", "error"):
         rec.status = "classified"
         rec.raw_extraction = None
@@ -233,7 +193,6 @@ def export_batch(submission_id):
     form_type_filter = request.args.get("form_type")
 
     query = ExtractedRecord.query.filter_by(submission_id=submission_id)
-
     if record_id:
         query = query.filter_by(id=record_id)
     elif form_type_filter:
@@ -242,12 +201,10 @@ def export_batch(submission_id):
             query = query.filter_by(form_type_id=ft_obj.id)
 
     records = query.all()
-
     if not records:
         return jsonify({"error": "No records found"}), 404
 
     try:
-        # Determine dominant form type for this export
         form_type_code = form_type_filter
         if not form_type_code and records:
             ft = FormType.query.get(records[0].form_type_id)
@@ -260,7 +217,6 @@ def export_batch(submission_id):
         )
         output = BytesIO(xlsx_bytes)
         output.seek(0)
-
         ft_slug = form_type_code.replace("/", "-") if form_type_code else "batch"
         return send_file(
             output,
@@ -268,7 +224,6 @@ def export_batch(submission_id):
             download_name=f"{ft_slug}_{submission_id}.xlsx",
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -287,23 +242,3 @@ def save_export_columns():
         return jsonify({"error": "Expected a JSON object"}), 400
     save_export_config(payload)
     return jsonify({"success": True})
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _save_gravure_roll_rows(gravure_record_id: int, roll_rows_data: list):
-    """Delete existing rows for this record and insert fresh ones."""
-    GravureRollRow.query.filter_by(gravure_record_id=gravure_record_id).delete()
-    for idx, row in enumerate(roll_rows_data):
-        if not any(v for v in row.values() if v is not None and v != ""):
-            continue  # skip fully blank rows
-        grr = GravureRollRow(
-            gravure_record_id=gravure_record_id,
-            row_index=idx,
-        )
-        for col in ("rm_number", "plain_roll_wt", "plain_balance_rejected",
-                    "plain_core_wt", "printed_roll_number", "printed_roll_wt",
-                    "printed_core_wt", "meter", "remarks"):
-            val = row.get(col)
-            setattr(grr, col, val if val != "" else None)
-        db.session.add(grr)

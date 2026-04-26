@@ -7,9 +7,9 @@ class FormType(db.Model):
     __tablename__ = "form_types"
 
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(50), unique=True, nullable=False)   # e.g. F-PRD/01.2
+    code = db.Column(db.String(50), unique=True, nullable=False)
     name = db.Column(db.String(200), nullable=False)
-    keywords = db.Column(db.Text, nullable=True)                   # comma-separated
+    keywords = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     field_configs = db.relationship("FieldConfig", back_populates="form_type",
@@ -28,9 +28,9 @@ class FieldConfig(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     form_type_id = db.Column(db.Integer, db.ForeignKey("form_types.id"), nullable=False)
-    key = db.Column(db.String(100), nullable=False)     # internal snake_case key
-    label = db.Column(db.String(200), nullable=False)   # human-readable label
-    field_type = db.Column(db.String(50), default="text")  # text | number | date
+    key = db.Column(db.String(100), nullable=False)
+    label = db.Column(db.String(200), nullable=False)
+    field_type = db.Column(db.String(50), default="text")
     enabled = db.Column(db.Boolean, default=True)
     order = db.Column(db.Integer, default=0)
 
@@ -54,7 +54,6 @@ class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     batch_id = db.Column(db.String(100), unique=True, nullable=False)
     uploaded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-
     # V2 status lifecycle: pending → classified → extracted → verified → saved
     status = db.Column(db.String(50), default="pending")
 
@@ -73,10 +72,7 @@ class ExtractedRecord(db.Model):
     filename = db.Column(db.String(300), nullable=True)
     image_path = db.Column(db.String(500), nullable=True)
 
-    # Raw AI extraction (JSON blob as text)
     raw_extraction = db.Column(db.Text, nullable=True)
-
-    # Verified / saved data (JSON blob as text)
     verified_data = db.Column(db.Text, nullable=True)
 
     # V2 status lifecycle: classified → extracted → verified → saved | error
@@ -145,10 +141,7 @@ class FlexoPrintingRecord(db.Model):
 
 
 class GravurePrintingRecord(db.Model):
-    """
-    Permanent typed storage for verified Gravure Printing records.
-    Header + footer/summary scalars only. Per-roll data lives in GravureRollRow.
-    """
+    """Permanent typed storage for verified Gravure Printing records."""
     __tablename__ = "gravure_printing_records"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -192,32 +185,3 @@ class GravurePrintingRecord(db.Model):
     prepared_by = db.Column(db.String(200))
     supervisor = db.Column(db.String(200))
     remarks = db.Column(db.Text)
-
-    # ── Relationship to per-roll rows ─────────────────────────────────────────
-    roll_rows = db.relationship(
-        "GravureRollRow",
-        back_populates="gravure_record",
-        cascade="all, delete-orphan",
-        order_by="GravureRollRow.row_index"
-    )
-
-
-class GravureRollRow(db.Model):
-    """One row in the Gravure Printing roll table (one row per RM roll processed)."""
-    __tablename__ = "gravure_roll_rows"
-
-    id = db.Column(db.Integer, primary_key=True)
-    gravure_record_id = db.Column(db.Integer, db.ForeignKey("gravure_printing_records.id"), nullable=False)
-    row_index = db.Column(db.Integer, nullable=False)   # preserves original row order
-
-    rm_number = db.Column(db.String(100))
-    plain_roll_wt = db.Column(db.Float)
-    plain_balance_rejected = db.Column(db.Float)
-    plain_core_wt = db.Column(db.Float)
-    printed_roll_number = db.Column(db.String(200))
-    printed_roll_wt = db.Column(db.Float)
-    printed_core_wt = db.Column(db.Float)
-    meter = db.Column(db.Float)
-    remarks = db.Column(db.Text)
-
-    gravure_record = db.relationship("GravurePrintingRecord", back_populates="roll_rows")
