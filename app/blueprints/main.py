@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, jsonify, session, redirect, url_for, request
 from app import db
 from app.models import FormType, ExtractedRecord, Submission, FlexoPrintingRecord, GravurePrintingRecord
 from app.blueprints.auth import login_required
@@ -17,9 +17,12 @@ def dashboard():
         ExtractedRecord.status.in_(["extracted", "verified"])
     ).count()
 
-    recent_submissions = (
-        Submission.query.order_by(Submission.uploaded_at.desc()).limit(10).all()
+    page = request.args.get("page", 1, type=int)
+    pagination = (
+        Submission.query.order_by(Submission.uploaded_at.desc())
+        .paginate(page=page, per_page=10, error_out=False)
     )
+    recent_submissions = pagination.items
 
     stats = {
         "total_submissions": total_submissions,
@@ -35,6 +38,7 @@ def dashboard():
         form_types=form_types,
         stats=stats,
         recent_submissions=recent_submissions,
+        pagination=pagination,
     )
 
 
