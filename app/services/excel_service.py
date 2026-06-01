@@ -12,6 +12,7 @@ from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from app.models import FormType
 
 # ── Config persistence (Flexo only — Gravure columns are fixed) ───────────────
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "export_config.json")
@@ -310,16 +311,24 @@ GRAVURE_ROLL_COLS = [
 ]
 
 
-def _generate_gravure_excel(records, corrections_map=None):
+def _generate_gravure_excel(records, corrections_map=None, header_cols=None):
     wb = Workbook()
+
+    # Header columns come from the form's configured fields when available,
+    # so the export matches the verify screen exactly. "#" and File are kept
+    # as row identifiers. Falls back to the fixed list if no fields configured.
+    if header_cols:
+        cols = [("#", "serial"), ("File", "filename")] + list(header_cols)
+    else:
+        cols = GRAVURE_HEADER_COLS
 
     # ── Sheet 1: Header summary (one row per form) ────────────────────────────
     ws_hdr = wb.active
     ws_hdr.title = "Form Summary"
-    hdr_labels = [c[0] for c in GRAVURE_HEADER_COLS]
+    hdr_labels = [c[0] for c in cols]
     _apply_header(ws_hdr, hdr_labels, fill=GRAVURE_HEADER_FILL)
 
-    col_of_hdr = {c[1]: i + 1 for i, c in enumerate(GRAVURE_HEADER_COLS)}
+    col_of_hdr = {c[1]: i + 1 for i, c in enumerate(cols)}
 
     for ri, record in enumerate(records, 1):
         excel_row = ri + 1
@@ -327,19 +336,21 @@ def _generate_gravure_excel(records, corrections_map=None):
         # Remove roll_rows from data dict so it doesn't pollute header fields
         data.pop("roll_rows", None)
 
-        ws_hdr.cell(excel_row, col_of_hdr["serial"]).value = ri
-        ws_hdr.cell(excel_row, col_of_hdr["filename"]).value = record.filename or ""
+        if "serial" in col_of_hdr:
+            ws_hdr.cell(excel_row, col_of_hdr["serial"]).value = ri
+        if "filename" in col_of_hdr:
+            ws_hdr.cell(excel_row, col_of_hdr["filename"]).value = record.filename or ""
 
-        for label, dk in GRAVURE_HEADER_COLS:
+        for label, dk in cols:
             if dk in ("serial", "filename"):
                 continue
             ws_hdr.cell(excel_row, col_of_hdr[dk]).value = data.get(dk, "") or ""
 
-        _style_data_row(ws_hdr, excel_row, len(GRAVURE_HEADER_COLS),
+        _style_data_row(ws_hdr, excel_row, len(cols),
                         ri % 2 == 0, alt_fill=GRAVURE_ALT_FILL)
 
     ws_hdr.freeze_panes = "A2"
-    ws_hdr.auto_filter.ref = f"A1:{_col(len(GRAVURE_HEADER_COLS))}1"
+    ws_hdr.auto_filter.ref = f"A1:{_col(len(cols))}1"
     _auto_col_width(ws_hdr)
 
     # ── Sheet 2: Roll rows (one row per roll, linked back to form) ────────────
@@ -380,6 +391,22 @@ def _generate_gravure_excel(records, corrections_map=None):
     return wb
 
 
+def _form_type_for_records(records):
+    """Look up the FormType from the first record (all records in a batch share it)."""
+    if not records:
+        return None
+    ft_id = getattr(records[0], "form_type_id", None)
+    return FormType.query.get(ft_id) if ft_id else None
+
+
+def _field_columns(form_type):
+    """Header columns built from the form's enabled fields: [(label, key), ...].
+    This is exactly what the verify screen shows, so the export matches it."""
+    if not form_type:
+        return None
+    return [(f.label, f.key) for f in form_type.enabled_fields()]
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def generate_batch_excel(batch_id, records, corrections_map=None, form_type_code=None):
@@ -387,8 +414,11 @@ def generate_batch_excel(batch_id, records, corrections_map=None, form_type_code
     Dispatch to the correct generator based on form_type_code.
     Falls back to flexo for backward compatibility.
     """
-    if form_type_code == "F-PRD/01.1":
-        wb = _generate_gravure_excel(records, corrections_map)
+    form_type = _form_type_for_records(records)
+    code = form_type_code or (form_type.code if form_type else None)
+    if code == "F-PRD/01.1":
+        wb = _generate_gravure_excel(records, corrections_map,
+                                     header_cols=_field_columns(form_type))
     else:
         wb = _generate_flexo_excel(records, corrections_map)
 
