@@ -125,7 +125,7 @@
         {% for sub in recent_submissions %}
         <tr>
           <td><code style="font-size:.75rem;">{{ sub.batch_id[:16] }}…</code></td>
-          <td>{{ sub.uploaded_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ sub.uploaded_at | localtime }}</td>
           <td><span class="badge bg-secondary">{{ sub.records | length }}</span></td>
           <td>
             {% if sub.status == 'saved' %}
