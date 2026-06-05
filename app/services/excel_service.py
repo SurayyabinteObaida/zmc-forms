@@ -210,42 +210,34 @@ def _generate_flexo_excel(records, corrections_map=None):
 
 # ── Gravure Export ────────────────────────────────────────────────────────────
 
-# Gravure header-level columns
+# Gravure header-level columns (white/data columns from master only)
 GRAVURE_HEADER_COLS = [
-    ("#",                  "serial"),
-    ("File",               "filename"),
-    ("Print Date",         "print_date"),
-    ("Job Name",           "job_name"),
-    ("Job Code",           "job_code"),
-    ("Material",           "material"),
-    ("Supplier",           "material_supplier"),
-    ("Web Size & MIC",     "web_size_mic"),
-    ("Plain Order Qty",    "plain_order_qty"),
-    ("Cylinder Qty & #",   "cylinder_qty_number"),
-    ("Cylinder L x Cir",   "cylinder_length_cir"),
-    ("Speed",              "speed"),
-    ("Operator",           "operator"),
-    ("Color Man",          "color_man"),
-    ("Ink GSM",            "ink_gsm"),
-    ("Setting Time",       "setting_time"),
-    ("Start Time",         "start_time"),
-    ("End Time",           "end_time"),
-    ("Plain Gross Wt.",    "plain_gross_wt"),
-    ("Printed Gross Wt.",  "printed_gross_wt"),
-    ("Plain Core Wt.",     "plain_core_wt"),
-    ("Printed Core Wt.",   "printed_core_wt"),
-    ("Plain Balance",      "plain_balance"),
-    ("Plain Net Wt.",      "plain_net_wt"),
-    ("Printed Net Wt.",    "printed_net_wt"),
-    ("Total Mtr.",         "total_mtr"),
-    ("Plain Waste",        "plain_waste"),
-    ("Roll Waste",         "roll_waste"),
-    ("Printed Waste",      "printed_waste"),
-    ("Setting Waste",      "setting_waste"),
-    ("Total Waste",        "total_waste"),
-    ("Prepared By",        "prepared_by"),
-    ("Supervisor",         "supervisor"),
-    ("Remarks",            "remarks"),
+    ("S.NO",                       "serial"),
+    ("MONTH",                      "month"),
+    ("PRINT DATE",                 "print_date"),
+    ("JOB CODE",                   "job_code"),
+    ("JOB NAME",                   "job_name"),
+    ("PRINTED FILM",               "material"),
+    ("SIZE / MICRON",              "web_size_mic"),
+    ("CATEGORY",                   "category"),
+    ("TARGETED QTY",               "targeted_qty"),
+    ("SPEED",                      "speed"),
+    ("FILM SUPPLIER",              "material_supplier"),
+    ("PLAIN WT.",                  "plain_net_wt"),
+    ("PRINTED WT.",                "printed_net_wt"),
+    ("Printed WASTAGE",            "printed_waste"),
+    ("PLAIN WASTAGE",              "plain_waste"),
+    ("METER",                      "meter"),
+    ("OPERATOR",                   "operator"),
+    ("Setting Time (MIN)",         "setting_time"),
+    ("START TIME",                 "start_time"),
+    ("END TIME",                   "end_time"),
+    ("SHIFT",                      "shift"),
+    ("NO. OF ROLLS",               "no_of_rolls"),
+    ("RUN HRS (24H)",              "run_hrs"),
+    ("NO. OF TIME MACHINE STOP",   "machine_stops"),
+    ("MACHINE STOP REMARKS",       "machine_stop_remarks"),
+    ("REMARKS",                    "remarks"),
 ]
 
 # Gravure roll row columns
@@ -268,13 +260,7 @@ GRAVURE_ROLL_COLS = [
 def _generate_gravure_excel(records, corrections_map=None, header_cols=None):
     wb = Workbook()
 
-    # Header columns come from the form's configured fields when available,
-    # so the export matches the verify screen exactly. "#" and File are kept
-    # as row identifiers. Falls back to the fixed list if no fields configured.
-    if header_cols:
-        cols = [("#", "serial"), ("File", "filename")] + list(header_cols)
-    else:
-        cols = GRAVURE_HEADER_COLS
+    cols = GRAVURE_HEADER_COLS
 
     # ── Sheet 1: Header summary (one row per form) ────────────────────────────
     ws_hdr = wb.active
@@ -287,16 +273,13 @@ def _generate_gravure_excel(records, corrections_map=None, header_cols=None):
     for ri, record in enumerate(records, 1):
         excel_row = ri + 1
         data = _get_data(record)
-        # Remove roll_rows from data dict so it doesn't pollute header fields
         data.pop("roll_rows", None)
 
         if "serial" in col_of_hdr:
             ws_hdr.cell(excel_row, col_of_hdr["serial"]).value = ri
-        if "filename" in col_of_hdr:
-            ws_hdr.cell(excel_row, col_of_hdr["filename"]).value = record.filename or ""
 
         for label, dk in cols:
-            if dk in ("serial", "filename"):
+            if dk == "serial":
                 continue
             ws_hdr.cell(excel_row, col_of_hdr[dk]).value = data.get(dk, "") or ""
 
@@ -371,8 +354,7 @@ def generate_batch_excel(batch_id, records, corrections_map=None, form_type_code
     form_type = _form_type_for_records(records)
     code = form_type_code or (form_type.code if form_type else None)
     if code == "F-PRD/01.1":
-        wb = _generate_gravure_excel(records, corrections_map,
-                                     header_cols=_field_columns(form_type))
+        wb = _generate_gravure_excel(records, corrections_map)
     else:
         wb = _generate_flexo_excel(records, corrections_map)
 
