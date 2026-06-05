@@ -223,6 +223,14 @@
        class="nav-link" target="_blank">
       <i class="bi bi-file-earmark-excel"></i> Gravure Export
     </a>
+    <a href="{{ url_for('export.export_excel', form_type_id=4) }}"
+       class="nav-link" target="_blank">
+      <i class="bi bi-file-earmark-excel"></i> Lamination Export
+    </a>
+    <a href="{{ url_for('export.export_excel', form_type_id=5) }}"
+       class="nav-link" target="_blank">
+      <i class="bi bi-file-earmark-excel"></i> Slitting Export
+    </a>
 
     <div class="nav-section mt-2">Settings</div>
     <a href="{{ url_for('config.index') }}"
