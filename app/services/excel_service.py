@@ -18,36 +18,25 @@ from app.models import FormType
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "export_config.json")
 
 ALL_COLUMNS = [
-    ("S. NO",             "serial",          6,  False),
-    ("Job Code",          "job_code",        14, False),
-    ("PRINT DATE",        "date",            12, False),
-    ("Job Name",          "job_name",        22, False),
-    ("BAG SIZE",          "bag_size",        14, False),
-    ("PRINTED FILM",      "material",        18, False),
-    ("TUBE / SHEET",      "tube_sheet",      12, False),
-    ("SIZE (INCHES)",     "web_size",        12, False),
-    ("MIC",               "mic",             10, False),
-    ("FILM SUPPLIER",     "supplier",        15, False),
-    ("ORDER QTY",         "order_qty",       10, False),
-    ("PLAIN WT",          "net_wt",          10, False),
-    ("PRINTED WT",        "printed_reel_wt", 10, False),
-    ("Printed Wastage",   "printed_waste",   12, False),
-    ("PLAIN WASTAGE",     "plain_waste",     12, False),
-    ("OPERATOR",          "operator",        12, False),
-    ("SETTING TIME",      "setting_time",    12, False),
-    ("START TIME",        "start_time",      10, False),
-    ("END TIME",          "end_time",        10, False),
-    ("Wt. Gain",          "_wt_gain",        10, True),
-    ("Wt. Gain %",        "_wt_gain_pct",    10, True),
-    ("Wastage IN %",      "_wastage_pct",    10, True),
-    ("SIZE IN MM",        "_size_mm",        12, True),
-    ("CALCULATED METERS", "_calc_meters",    16, True),
-    ("MACHINE RUN TIME",  "_run_time",       14, True),
-    ("AVG ACTUAL SPEED",  "_avg_speed",      14, True),
-    ("SHIFT",             "shift",            8, False),
-    ("Run Hrs (24H)",     "_run_hrs",        10, True),
-    ("NO. OF STOPS",      "machine_stops",   10, False),
-    ("JOB STATUS",        "job_status",      12, False),
+    ("S. NO",             "serial",          6),
+    ("Job Code",          "job_code",        14),
+    ("PRINT DATE",        "date",            12),
+    ("Job Name",          "job_name",        22),
+    ("BAG SIZE",          "bag_size",        14),
+    ("PRINTED FILM",      "material",        18),
+    ("TUBE / SHEET",      "tube_sheet",      12),
+    ("SIZE (INCHES)",     "web_size",        12),
+    ("MIC",               "mic",             10),
+    ("FILM SUPPLIER",     "supplier",        15),
+    ("ORDER QTY",         "order_qty",       10),
+    ("PLAIN WT",          "net_wt",          10),
+    ("PRINTED WT",        "printed_reel_wt", 10),
+    ("Printed Wastage",   "printed_waste",   12),
+    ("PLAIN WASTAGE",     "plain_waste",     12),
+    ("OPERATOR",          "operator",        12),
+    ("SETTING TIME",      "setting_time",    12),
+    ("START TIME",        "start_time",      10),
+    ("END TIME",          "end_time",        10),
 ]
 
 MANDATORY_KEYS = {"serial"}
@@ -155,67 +144,16 @@ def _write_serial_wise(ws, records, corrections_map=None, config=None):
         if "serial" in col_of:
             ws.cell(excel_row, col_of["serial"]).value = row_idx
 
-        for label, dk, width, is_formula in active_cols:
-            if is_formula or dk == "serial":
+        for label, dk, width in active_cols:
+            if dk == "serial":
                 continue
             ws.cell(excel_row, col_of[dk]).value = data.get(dk) or ""
-
-        r = excel_row
-
-        def fc(key):
-            return _col(col_of[key]) if key in col_of else None
-
-        pw   = fc("net_wt")
-        prw  = fc("printed_reel_wt")
-        plw  = fc("plain_waste")
-        st   = fc("start_time")
-        et   = fc("end_time")
-        dens = fc("mic")
-        ws_c = fc("web_size")
-
-        if "_wt_gain" in col_of and pw and prw:
-            ws.cell(r, col_of["_wt_gain"]).value = \
-                f"=IF(AND({prw}{r}<>\"\",{pw}{r}<>\"\"),{prw}{r}-{pw}{r},\"\")"
-
-        if "_wt_gain_pct" in col_of and pw and prw:
-            c = ws.cell(r, col_of["_wt_gain_pct"])
-            c.value = f"=IF(AND({pw}{r}<>0,{pw}{r}<>\"\"),({prw}{r}-{pw}{r})/{pw}{r},\"\")"
-            c.number_format = "0.0%"
-
-        if "_wastage_pct" in col_of and pw and plw:
-            c = ws.cell(r, col_of["_wastage_pct"])
-            c.value = f"=IF(AND({pw}{r}<>0,{plw}{r}<>\"\"),{plw}{r}/{pw}{r},\"\")"
-            c.number_format = "0.0%"
-
-        if "_size_mm" in col_of and ws_c:
-            ws.cell(r, col_of["_size_mm"]).value = \
-                f"=IF({ws_c}{r}<>\"\",{ws_c}{r}*25.4,\"\")"
-
-        if "_calc_meters" in col_of and pw and ws_c and dens:
-            ws.cell(r, col_of["_calc_meters"]).value = \
-                f"=IF(AND({pw}{r}<>\"\",{ws_c}{r}<>\"\",{dens}{r}<>\"\")," \
-                f"({pw}{r}*1000000)/({ws_c}{r}*25.4/1000*{dens}{r}),\"\")"
-
-        rt_col = fc("_run_time")
-        if "_run_time" in col_of and st and et:
-            ws.cell(r, col_of["_run_time"]).value = \
-                f"=IF(AND({st}{r}<>\"\",{et}{r}<>\"\"),{et}{r}-{st}{r},\"\")"
-
-        if "_run_hrs" in col_of and rt_col:
-            ws.cell(r, col_of["_run_hrs"]).value = \
-                f"=IF({rt_col}{r}<>\"\",{rt_col}{r}*24,\"\")"
-
-        calc_c = fc("_calc_meters")
-        rh_c   = fc("_run_hrs")
-        if "_avg_speed" in col_of and calc_c and rh_c:
-            ws.cell(r, col_of["_avg_speed"]).value = \
-                f"=IF(AND({calc_c}{r}<>\"\",{rh_c}{r}<>0),{calc_c}{r}/{rh_c}{r},\"\")"
 
         _style_data_row(ws, excel_row, ncols, row_idx % 2 == 0, corrected_ci)
 
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:{_col(ncols)}1"
-    for i, (_, _, width, _) in enumerate(active_cols, 1):
+    for i, (_, _, width) in enumerate(active_cols, 1):
         ws.column_dimensions[_col(i)].width = width
 
 
@@ -443,7 +381,6 @@ def get_column_config_for_ui():
             "label": col[0],
             "enabled": config.get(col[1], True),
             "mandatory": col[1] in MANDATORY_KEYS,
-            "is_formula": col[3],
         }
         for col in ALL_COLUMNS
     ]
