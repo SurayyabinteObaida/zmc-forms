@@ -513,4 +513,3 @@ def get_column_config_for_ui():
         }
         for col in ALL_COLUMNS
     ]
-#
