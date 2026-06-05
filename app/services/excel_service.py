@@ -257,6 +257,83 @@ GRAVURE_ROLL_COLS = [
 ]
 
 
+# ── Slitting columns (F-PRD/03.1) — white/data columns only ─────────────────
+SLITTING_COLS = [
+    ("JOB CODE",               "job_code"),
+    ("DATE",                   "date"),
+    ("JOB NAME",               "job_name"),
+    ("STRUCTURE",              "structure"),
+    ("OVERALL MIC (µ)",        "overall_mic"),
+    ("SLITTING SIZE",          "slitting_size"),
+    ("OUTTER DIA",             "outter_dia"),
+    ("INNER DIA",              "inner_dia"),
+    ("START TIME",             "start_time"),
+    ("END TIME",               "end_time"),
+    ("OPERATOR",               "operator"),
+    ("SHIFT",                  "shift"),
+    ("TOTAL MOTHER REELS",     "total_mother_reels"),
+    ("TOTAL SLITTED REELS",    "total_slitted_reels"),
+    ("SINGLE SLITTED REEL WT.","single_slitted_reel_wt"),
+    ("SLITTED REEL WT.",       "slitted_reel_wt"),
+    ("MOTHER REEL WT",         "mother_reel_wt"),
+    ("SETTING WASTAGE",        "setting_wastage"),
+    ("TRIM WASTE",             "trim_waste"),
+    ("TRIM SIZE",              "trim_size"),
+    ("REMARKS",                "remarks"),
+]
+
+
+# ── Lamination columns (F-PRD/02.1) — white/data columns only ───────────────
+LAMINATION_COLS = [
+    ("JOB CODE",                            "job_code"),
+    ("STAGE CODE",                          "stage_code"),
+    ("MONTH",                               "month"),
+    ("DATE",                                "date"),
+    ("JOB NAME",                            "job_name"),
+    ("MACHINE",                             "machine"),
+    ("SHIFT",                               "shift"),
+    ("SPEED",                               "speed"),
+    ("START TIME",                          "start_time"),
+    ("END TIME",                            "end_time"),
+    ("STRUCTURE",                           "structure"),
+    ("FILM A",                              "film_a"),
+    ("FILM A SIZE / MICRON",                "film_a_size_micron"),
+    ("FILM B",                              "film_b"),
+    ("FILM B SIZE / MICRON",                "film_b_size_micron"),
+    ("GLUE COATING SIZE",                   "glue_coating_size"),
+    ("TOTAL PRINTED FILM QTY",              "total_printed_film_qty"),
+    ("PRINTED WASTAGE",                     "printed_wastage"),
+    ("TOTAL FILM B QTY",                    "total_film_b_qty"),
+    ("FILM B WASTAGE",                      "film_b_wastage"),
+    ("TOTAL ORDER QUANTITY",                "total_order_qty"),
+    ("TOTAL LAMINATED QTY",                 "total_laminated_qty"),
+    ("JOB STATUS",                          "job_status"),
+    ("TOTAL LAMINATED METERS",              "total_laminated_meters"),
+    ("LAMINATED WASTAGE",                   "laminated_wastage"),
+    ("GLUE RATIO",                          "glue_ratio"),
+    ("GLUE TYPE",                           "glue_type"),
+    ("HARDNER",                             "hardner"),
+    ("RESIN",                               "resin"),
+    ("TOTAL GLUE CONSUMPTION WITHOUT SOLVENT", "glue_consumption_no_solvent"),
+    ("A-COMPONENT RESIN",                   "a_component_resin"),
+    ("B-COMPONENT HARDNER",                 "b_component_hardner"),
+    ("ETHYL ACETATE",                       "ethyl_acetate"),
+    ("TOTAL BATCH QTY",                     "total_batch_qty"),
+    ("A-COMPONENT RESIN CONSUMPTION",       "a_resin_consumption"),
+    ("B-COMPONENT HARDNER CONSUMPTION",     "b_hardner_consumption"),
+    ("ETHYL ACETATE CONSUMPTION",           "ea_consumption"),
+    ("A-COMPONENT RESIN RATE",              "a_resin_rate"),
+    ("B-COMPONENT HARDNER RATE",            "b_hardner_rate"),
+    ("RATE OF ETHYL ACETATE",               "ea_rate"),
+    ("CONSUMPTION WISE COMPONENT A COST",   "a_cost"),
+    ("CONSUMPTION WISE COMPONENT B COST",   "b_cost"),
+    ("CONSUMPTION WISE COMPONENT C COST",   "c_cost"),
+    ("TOTAL COST",                          "total_cost"),
+    ("GLUE COST PER KG",                    "glue_cost_per_kg"),
+    ("REMARKS",                             "remarks"),
+]
+
+
 def _generate_gravure_excel(records, corrections_map=None, header_cols=None):
     wb = Workbook()
 
@@ -328,6 +405,56 @@ def _generate_gravure_excel(records, corrections_map=None, header_cols=None):
     return wb
 
 
+# ── Slitting Export (F-PRD/03.1) ─────────────────────────────────────────────
+
+def _generate_slitting_excel(records, corrections_map=None):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Slitting Data"
+    cols = SLITTING_COLS
+    hdr_labels = [c[0] for c in cols]
+    _apply_header(ws, hdr_labels)
+
+    col_of = {c[1]: i + 1 for i, c in enumerate(cols)}
+
+    for ri, record in enumerate(records, 1):
+        excel_row = ri + 1
+        data = _get_data(record)
+        for label, dk in cols:
+            ws.cell(excel_row, col_of[dk]).value = data.get(dk, "") or ""
+        _style_data_row(ws, excel_row, len(cols), ri % 2 == 0)
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{_col(len(cols))}1"
+    _auto_col_width(ws)
+    return wb
+
+
+# ── Lamination Export (F-PRD/02.1) ───────────────────────────────────────────
+
+def _generate_lamination_excel(records, corrections_map=None):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Lamination Data"
+    cols = LAMINATION_COLS
+    hdr_labels = [c[0] for c in cols]
+    _apply_header(ws, hdr_labels)
+
+    col_of = {c[1]: i + 1 for i, c in enumerate(cols)}
+
+    for ri, record in enumerate(records, 1):
+        excel_row = ri + 1
+        data = _get_data(record)
+        for label, dk in cols:
+            ws.cell(excel_row, col_of[dk]).value = data.get(dk, "") or ""
+        _style_data_row(ws, excel_row, len(cols), ri % 2 == 0)
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{_col(len(cols))}1"
+    _auto_col_width(ws)
+    return wb
+
+
 def _form_type_for_records(records):
     """Look up the FormType from the first record (all records in a batch share it)."""
     if not records:
@@ -355,6 +482,10 @@ def generate_batch_excel(batch_id, records, corrections_map=None, form_type_code
     code = form_type_code or (form_type.code if form_type else None)
     if code == "F-PRD/01.1":
         wb = _generate_gravure_excel(records, corrections_map)
+    elif code == "F-PRD/02.1":
+        wb = _generate_lamination_excel(records, corrections_map)
+    elif code == "F-PRD/03.1":
+        wb = _generate_slitting_excel(records, corrections_map)
     else:
         wb = _generate_flexo_excel(records, corrections_map)
 
@@ -382,3 +513,4 @@ def get_column_config_for_ui():
         }
         for col in ALL_COLUMNS
     ]
+#

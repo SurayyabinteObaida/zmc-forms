@@ -10,6 +10,8 @@ from app.services.extractors.base import vision_call, parse_json
 FORM_CODE_NAMES = {
     "F-PRD/01.2": "Flexo Printing Production Report",
     "F-PRD/01.1": "Gravure Printing Production Report",
+    "F-PRD/02.1": "Lamination Production Report",
+    "F-PRD/03.1": "Slitting Production Report",
 }
 
 _CLASSIFY_PROMPT = """You are reading a ZMC manufacturing production form.
@@ -18,10 +20,12 @@ Look ONLY at the form header — the title and form code printed at the top.
 Known forms:
 - F-PRD/01.2 → Flexo Printing Production Report
 - F-PRD/01.1 → Gravure Printing Production Report (titled "ZMC Printing Production Report")
+- F-PRD/02.1 → Lamination Production Report (titled "ZMC Lamination Production Report")
+- F-PRD/03.1 → Slitting Production Report (titled "ZMC Slitting Production Report")
 
 Respond with ONLY a JSON object, nothing else:
 {
-  "form_code": "F-PRD/01.2" or "F-PRD/01.1" or "UNKNOWN",
+  "form_code": "F-PRD/01.2" or "F-PRD/01.1" or "F-PRD/02.1" or "F-PRD/03.1" or "UNKNOWN",
   "confidence": 0.0 to 1.0
 }"""
 
@@ -65,6 +69,14 @@ def extract(form_type_code: str, image_path: str, form_type_obj: FormType = None
         elif form_type_code == "F-PRD/01.1":
             from app.services.extractors.gravure import extract as extract_gravure
             result = extract_gravure(image_path)
+
+        elif form_type_code == "F-PRD/02.1":
+            from app.services.extractors.lamination import extract as extract_lamination
+            result = extract_lamination(image_path)
+
+        elif form_type_code == "F-PRD/03.1":
+            from app.services.extractors.slitting import extract as extract_slitting
+            result = extract_slitting(image_path)
 
         else:
             return {
