@@ -213,7 +213,6 @@ def _generate_flexo_excel(records, corrections_map=None):
 # Gravure header-level columns (white/data columns from master only)
 GRAVURE_HEADER_COLS = [
     ("S.NO",                       "serial"),
-    ("MONTH",                      "month"),
     ("PRINT DATE",                 "print_date"),
     ("JOB CODE",                   "job_code"),
     ("JOB NAME",                   "job_name"),
@@ -273,7 +272,6 @@ SLITTING_COLS = [
     ("SHIFT",                  "shift"),
     ("TOTAL MOTHER REELS",     "total_mother_reels"),
     ("TOTAL SLITTED REELS",    "total_slitted_reels"),
-    ("SINGLE SLITTED REEL WT.","single_slitted_reel_wt"),
     ("SLITTED REEL WT.",       "slitted_reel_wt"),
     ("MOTHER REEL WT",         "mother_reel_wt"),
     ("SETTING WASTAGE",        "setting_wastage"),
@@ -287,7 +285,6 @@ SLITTING_COLS = [
 LAMINATION_COLS = [
     ("JOB CODE",                            "job_code"),
     ("STAGE CODE",                          "stage_code"),
-    ("MONTH",                               "month"),
     ("DATE",                                "date"),
     ("JOB NAME",                            "job_name"),
     ("MACHINE",                             "machine"),
@@ -307,7 +304,6 @@ LAMINATION_COLS = [
     ("FILM B WASTAGE",                      "film_b_wastage"),
     ("TOTAL ORDER QUANTITY",                "total_order_qty"),
     ("TOTAL LAMINATED QTY",                 "total_laminated_qty"),
-    ("JOB STATUS",                          "job_status"),
     ("TOTAL LAMINATED METERS",              "total_laminated_meters"),
     ("LAMINATED WASTAGE",                   "laminated_wastage"),
     ("GLUE RATIO",                          "glue_ratio"),
