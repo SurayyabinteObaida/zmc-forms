@@ -32,7 +32,7 @@ Return ONLY a valid JSON object with this exact structure (null for any field no
   "total_mother_reels": <number or null>,
   "total_slitted_reels": <number or null>,
   "single_slitted_reel_wt": <number or null>,
-  "slitted_reel_wt": <number or null>,
+  "slitted_reel_wt": <number or null — take this from the NET WT. line, NOT the gross Slitted Weight line>,
   "mother_reel_wt": <number or null>,
   "setting_wastage": <number or null>,
   "trim_waste": <number or null>,
@@ -57,15 +57,16 @@ HEADER (top section):
 - SPEED: if present
 
 SUMMARY (bottom section):
-- SLITTED WEIGHT / SLITTED REEL WT.: total weight of slitted reels
+- SLITTED WEIGHT (gross): SKIP this line — do NOT use it for any field
+- NET WT.: this is the value to return as "slitted_reel_wt" (net weight of slitted reels, after core/tare deduction)
 - MOTHER REEL WT: weight of the mother reel(s) before slitting
-- NET WT.: net weight
 - SETTING WASTE: labeled "Setting Waste"
 - TRIM WASTE: labeled "Trim Waste"
 - TOTAL WASTE: labeled "Total Waste" (skip — formula column)
 - CORE WT.: various core weights (may appear multiple times)
 
 RULES:
+- "slitted_reel_wt" must come from the NET WT. line. If both a gross Slitted Weight and a NET WT. value are visible, always use NET WT. Never return the gross value.
 - Numbers must be returned as numbers, not strings.
 - A dash (-) or blank always means null, never zero.
 - Ignore individual roll rows in the middle table.
