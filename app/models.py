@@ -31,10 +31,20 @@ class FieldConfig(db.Model):
     key = db.Column(db.String(100), nullable=False)
     label = db.Column(db.String(200), nullable=False)
     field_type = db.Column(db.String(50), default="text")
+    options = db.Column(db.Text, nullable=True)  # JSON array e.g. '["Solvent-based","Solvent less"]'
     enabled = db.Column(db.Boolean, default=True)
     order = db.Column(db.Integer, default=0)
 
     form_type = db.relationship("FormType", back_populates="field_configs")
+
+    def options_list(self):
+        import json
+        if self.options:
+            try:
+                return json.loads(self.options)
+            except Exception:
+                pass
+        return []
 
     def to_dict(self):
         return {
@@ -42,6 +52,7 @@ class FieldConfig(db.Model):
             "key": self.key,
             "label": self.label,
             "field_type": self.field_type,
+            "options": self.options_list(),
             "enabled": self.enabled,
             "order": self.order,
         }

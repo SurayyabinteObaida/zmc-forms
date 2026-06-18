@@ -170,6 +170,21 @@
                   {{ field.label }}
                   <span class="text-muted fw-400" style="font-weight:400;">({{ field.field_type }})</span>
                 </label>
+                {% if field.field_type == 'select' %}
+                <select
+                  class="verify-input{% if item.corrections and field.key in item.corrections %} auto-corrected{% endif %}"
+                  name="{{ field.key }}"
+                  data-original="{{ item.raw_data.get(field.key, '') or '' }}"
+                  onchange="onFieldChange(this)">
+                  <option value="">— Select —</option>
+                  {% for opt in field.options_list() %}
+                  <option value="{{ opt }}"
+                    {% if (item.raw_data.get(field.key, '') or '') == opt %}selected{% endif %}>
+                    {{ opt }}
+                  </option>
+                  {% endfor %}
+                </select>
+                {% else %}
                 <input
                   class="verify-input{% if item.corrections and field.key in item.corrections %} auto-corrected{% endif %}"
                   type="{{ 'number' if field.field_type == 'number' else 'text' }}"
@@ -180,6 +195,7 @@
                   oninput="onFieldChange(this)"
                   step="any"
                 />
+                {% endif %}
                 {% if item.corrections and field.key in item.corrections %}
                 <span class="correction-badge"
                   title="Auto-corrected from: {{ item.corrections[field.key].original }}">

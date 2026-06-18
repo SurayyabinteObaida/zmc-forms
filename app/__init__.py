@@ -181,7 +181,7 @@ def _seed_form_types():
                 {"key": "total_laminated_meters",  "label": "Total Laminated Meters",       "field_type": "number", "enabled": True,  "order": 24},
                 {"key": "laminated_wastage",       "label": "Laminated Wastage",            "field_type": "number", "enabled": True,  "order": 25},
                 {"key": "glue_ratio",              "label": "Glue Ratio",                   "field_type": "text",   "enabled": True,  "order": 26},
-                {"key": "glue_type",               "label": "Glue Type",                    "field_type": "text",   "enabled": True,  "order": 27},
+                {"key": "glue_type",               "label": "Glue Type",                    "field_type": "select", "options": '["Solvent-based","Solvent less"]', "enabled": True,  "order": 27},
                 {"key": "hardner",                 "label": "Hardner",                      "field_type": "number", "enabled": True,  "order": 28},
                 {"key": "resin",                   "label": "Resin",                        "field_type": "number", "enabled": True,  "order": 29},
                 {"key": "glue_consumption_no_solvent", "label": "Glue Consumption (No Solvent)", "field_type": "number", "enabled": False, "order": 30},
@@ -249,6 +249,7 @@ def _seed_form_types():
                     key=f["key"],
                     label=f["label"],
                     field_type=f["field_type"],
+                    options=f.get("options"),
                     enabled=f["enabled"],
                     order=f["order"],
                 ))
@@ -258,6 +259,8 @@ def _seed_form_types():
                 if f["key"] in existing_fields:
                     fc = existing_fields[f["key"]]
                     fc.label = f["label"]
+                    fc.field_type = f["field_type"]
+                    fc.options = f.get("options")
                     fc.enabled = f["enabled"]
                     fc.order = f["order"]
                 else:
@@ -266,6 +269,7 @@ def _seed_form_types():
                         key=f["key"],
                         label=f["label"],
                         field_type=f["field_type"],
+                        options=f.get("options"),
                         enabled=f["enabled"],
                         order=f["order"],
                     ))
