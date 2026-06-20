@@ -84,7 +84,7 @@ def _seed_form_types():
                 {"key": "ink_gsm",             "label": "Ink GSM",             "field_type": "number", "enabled": False, "order": 14},
                 {"key": "speed",               "label": "Speed",               "field_type": "number", "enabled": False, "order": 15},
                 {"key": "block_number",        "label": "Block #",             "field_type": "text",   "enabled": False, "order": 16},
-                {"key": "tube_sheet",          "label": "Tube/Sheet",          "field_type": "text",   "enabled": True,  "order": 17},
+                {"key": "tube_sheet",          "label": "Tube/Sheet",          "field_type": "select", "options": '["Tube","Sheet"]', "enabled": True,  "order": 17},
                 {"key": "bag_size",            "label": "Bag Size",            "field_type": "text",   "enabled": True,  "order": 18},
                 {"key": "setting_time",        "label": "Setting Time",        "field_type": "text",   "enabled": True,  "order": 19},
                 {"key": "start_time",          "label": "Start Time",          "field_type": "text",   "enabled": True,  "order": 20},

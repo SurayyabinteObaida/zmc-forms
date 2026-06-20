@@ -171,19 +171,25 @@ select.verify-input { cursor:pointer; }
                   {{ field.label }}
                   <span class="text-muted fw-400" style="font-weight:400;">({{ field.field_type }})</span>
                 </label>
-                {% if field.field_type == 'select' %}
+                {% if field.field_type == 'select' or field.key == 'tube_sheet' %}
                 <select
                   class="verify-input{% if item.corrections and field.key in item.corrections %} auto-corrected{% endif %}"
                   name="{{ field.key }}"
                   data-original="{{ item.raw_data.get(field.key, '') or '' }}"
                   onchange="onFieldChange(this)">
                   <option value="">— Select —</option>
-                  {% for opt in field.options_list() %}
-                  <option value="{{ opt }}"
-                    {% if (item.raw_data.get(field.key, '') or '') == opt %}selected{% endif %}>
-                    {{ opt }}
-                  </option>
-                  {% endfor %}
+                  {% if field.key == 'tube_sheet' %}
+                    {% for opt in ['Tube', 'Sheet'] %}
+                    <option value="{{ opt }}" {% if (item.raw_data.get(field.key, '') or '') == opt %}selected{% endif %}>{{ opt }}</option>
+                    {% endfor %}
+                  {% else %}
+                    {% for opt in field.options_list() %}
+                    <option value="{{ opt }}"
+                      {% if (item.raw_data.get(field.key, '') or '') == opt %}selected{% endif %}>
+                      {{ opt }}
+                    </option>
+                    {% endfor %}
+                  {% endif %}
                 </select>
                 {% else %}
                 <input
