@@ -1,9 +1,59 @@
+import json
 from flask import Blueprint, render_template, jsonify, session, redirect, url_for, request
 from app import db
 from app.models import FormType, ExtractedRecord, Submission, FlexoPrintingRecord, GravurePrintingRecord
 from app.blueprints.auth import login_required
 
 main_bp = Blueprint("main", __name__)
+
+FORM_TYPE_SHORT = {
+    "F-PRD/01.2": "Flexo",
+    "F-PRD/01.1": "Gravure",
+    "F-PRD/02.1": "Lamination",
+    "F-PRD/03.1": "Slitting",
+}
+
+FORM_TYPE_COLOR = {
+    "F-PRD/01.2": "#2E75B6",
+    "F-PRD/01.1": "#7C3AED",
+    "F-PRD/02.1": "#059669",
+    "F-PRD/03.1": "#D97706",
+}
+
+DATE_KEYS = ("date", "print_date")
+
+
+def _enrich_submissions(submissions):
+    form_type_map = {ft.id: ft for ft in FormType.query.all()}
+    enriched = []
+    for sub in submissions:
+        form_types_seen = {}
+        job_names = []
+        dates = []
+        for rec in sub.records:
+            ft = form_type_map.get(rec.form_type_id)
+            if ft and ft.code not in form_types_seen:
+                form_types_seen[ft.code] = ft
+            raw = rec.verified_data or rec.raw_extraction
+            if raw:
+                try:
+                    data = json.loads(raw)
+                    job = data.get("job_name")
+                    if job and job not in job_names:
+                        job_names.append(job)
+                    for dk in DATE_KEYS:
+                        if data.get(dk):
+                            dates.append(data[dk])
+                            break
+                except Exception:
+                    pass
+        enriched.append({
+            "sub": sub,
+            "form_types": list(form_types_seen.values()),
+            "job_names": job_names[:3],
+            "date": dates[0] if dates else None,
+        })
+    return enriched
 
 
 @main_bp.route("/")
@@ -22,7 +72,7 @@ def dashboard():
         Submission.query.order_by(Submission.uploaded_at.desc())
         .paginate(page=page, per_page=10, error_out=False)
     )
-    recent_submissions = pagination.items
+    enriched_submissions = _enrich_submissions(pagination.items)
 
     stats = {
         "total_submissions": total_submissions,
@@ -37,7 +87,9 @@ def dashboard():
         "dashboard/index.html",
         form_types=form_types,
         stats=stats,
-        recent_submissions=recent_submissions,
+        enriched_submissions=enriched_submissions,
+        form_type_short=FORM_TYPE_SHORT,
+        form_type_color=FORM_TYPE_COLOR,
         pagination=pagination,
     )
 

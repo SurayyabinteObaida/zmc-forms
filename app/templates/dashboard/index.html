@@ -114,24 +114,45 @@
     <table class="table data-table mb-0">
       <thead>
         <tr>
-          <th>Batch ID</th>
-          <th>Uploaded At</th>
-          <th>Records</th>
-          <th>Status</th>
-          <th>Action</th>
+          <th style="width:130px;">Uploaded At</th>
+          <th style="width:110px;">Form Type</th>
+          <th>Job Name(s)</th>
+          <th style="width:100px;">Print Date</th>
+          <th style="width:70px;">Records</th>
+          <th style="width:120px;">Status</th>
+          <th style="width:110px;">Action</th>
         </tr>
       </thead>
       <tbody>
-        {% for sub in recent_submissions %}
+        {% for item in enriched_submissions %}
+        {% set sub = item.sub %}
         <tr>
-          <td><code style="font-size:.75rem;">{{ sub.batch_id[:16] }}…</code></td>
-          <td>{{ sub.uploaded_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td style="font-size:.8rem;white-space:nowrap;">{{ sub.uploaded_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>
+            {% for ft in item.form_types %}
+              <span class="badge" style="background:{{ form_type_color.get(ft.code, '#6c757d') }};color:#fff;font-size:.7rem;">
+                {{ form_type_short.get(ft.code, ft.code) }}
+              </span>
+            {% else %}
+              <span class="text-muted" style="font-size:.75rem;">—</span>
+            {% endfor %}
+          </td>
+          <td style="font-size:.82rem;">
+            {% if item.job_names %}
+              {{ item.job_names | join(', ') }}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td style="font-size:.8rem;white-space:nowrap;">{{ item.date or '—' }}</td>
           <td><span class="badge bg-secondary">{{ sub.records | length }}</span></td>
           <td>
             {% if sub.status == 'saved' %}
               <span class="badge badge-saved">Saved</span>
             {% elif sub.status == 'extracted' %}
-              <span class="badge badge-extracted">Pending Verification</span>
+              <span class="badge badge-extracted">Pending</span>
+            {% elif sub.status == 'classified' %}
+              <span class="badge badge-pending">Classified</span>
             {% else %}
               <span class="badge badge-pending">{{ sub.status }}</span>
             {% endif %}
@@ -149,7 +170,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="5" class="text-center text-muted py-4">
+          <td colspan="7" class="text-center text-muted py-4">
             <i class="bi bi-inbox fs-4 d-block mb-2"></i>
             No submissions yet. <a href="{{ url_for('upload.index') }}">Upload your first batch</a>
           </td>
