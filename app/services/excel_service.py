@@ -25,7 +25,7 @@ ALL_COLUMNS = [
     ("JOB NAME",                  "job_name",        22),
     ("PRINTED FILM",              "material",        18),
     ("TUBE /SHEET",               "tube_sheet",      12),
-    ("SIZE (INCHES)",             "web_size",        12),
+    ("WEB SIZE",                  "web_size",        12),
     ("MICRONS",                   "mic",             10),
     ("TARGETED QTY",              "order_qty",       14),
     ("FILM SUPPLIER",             "supplier",        15),

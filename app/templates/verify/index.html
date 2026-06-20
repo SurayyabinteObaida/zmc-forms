@@ -168,7 +168,7 @@ select.verify-input { cursor:pointer; }
               {% for field in item.enabled_fields %}
               <div class="col-md-6">
                 <label class="mb-1 d-block" style="font-size:.78rem;font-weight:600;color:#374151;">
-                  {{ field.label }}
+                  {{ 'Web Size' if field.key == 'web_size' else field.label }}
                   <span class="text-muted fw-400" style="font-weight:400;">({{ field.field_type }})</span>
                 </label>
                 {% if field.field_type == 'select' or field.key == 'tube_sheet' %}
